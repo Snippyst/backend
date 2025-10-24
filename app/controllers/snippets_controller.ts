@@ -14,18 +14,21 @@ import env from '#start/env'
 import drive from '@adonisjs/drive/services/main'
 import { nanoid } from '#config/app'
 import { DateTime } from 'luxon'
+import PermissionDeniedException from '#exceptions/permission_denied_exception'
+import ServiceUnavailableException from '#exceptions/service_unavailable_exception'
+import Error400Exception from '#exceptions/error_400_exception'
 
 export default class SnippetsController {
   public async store({ request, auth }: HttpContext) {
     const user = auth.user
-    if (!user) throw new Error('Unauthorized')
+    if (!user) throw new PermissionDeniedException()
 
     if (user.computationTimeReset && user.computationTimeReset < DateTime.now()) {
       user.computationTime = 60000
       user.computationTimeReset = DateTime.now().set({ hour: 23, minute: 59, second: 59 })
       await user.save()
     } else if (user.computationTime <= 0) {
-      throw new Error(
+      throw new PermissionDeniedException(
         'Insufficient computation time. Please try again tomorrow or request a manual approval from support.'
       )
     }
@@ -53,17 +56,25 @@ export default class SnippetsController {
     await snippet.related('tags').sync(fetchedTags.map((tag) => tag.id))
 
     const timeout = 2000
+    let result
 
-    const result = await axios.post(
-      env.get('TYPST_URL') + '/render',
-      {
-        content: snippet.content,
-        timeout: timeout,
-      },
-      {
-        validateStatus: (status) => status === 200 || status === 400 || status === 408,
-      }
-    )
+    try {
+      result = await axios.post(
+        env.get('TYPST_URL') + '/render',
+        {
+          content: snippet.content,
+          timeout: timeout,
+        },
+        {
+          validateStatus: (status) => status === 200 || status === 400 || status === 408,
+        }
+      )
+    } catch (error) {
+      await trx.rollback()
+      throw new ServiceUnavailableException(
+        'Typst rendering service is unavailable. Please try again later and contact support if the issue persists.'
+      )
+    }
 
     if (result.status === 408) auth.user.computationTime -= timeout
     else auth.user.computationTime -= result?.data?.time || timeout
@@ -71,7 +82,7 @@ export default class SnippetsController {
     await auth.user.save()
 
     if (result.status !== 200) {
-      throw new Error('Failed to render snippet:\n' + result.data.message)
+      throw new Error400Exception('Failed to render snippet:\n' + result.data.message)
     }
 
     const svgKey = `${snippet.publicId}-${nanoid()}`
@@ -140,7 +151,7 @@ export default class SnippetsController {
 
   public async vote({ request, auth }: HttpContext) {
     if (!auth.user) {
-      return Error('Unauthorized')
+      return new PermissionDeniedException()
     }
 
     const params = { ...request.params(), ...request.body() }
@@ -163,7 +174,7 @@ export default class SnippetsController {
 
   public async destroy({ request, auth }: HttpContext) {
     if (!auth.user) {
-      return Error('Unauthorized')
+      return new PermissionDeniedException()
     }
 
     const validated = await getByIdValidator.validate(request.params())

@@ -2,11 +2,12 @@ import type { HttpContext } from '@adonisjs/core/http'
 import Tag from '#models/tag'
 import { createTagValidator, listTagsValidator } from '#validators/tag'
 import { TagDto } from '../dtos/tag.js'
+import PermissionDeniedException from '#exceptions/permission_denied_exception'
 
 export default class TagsController {
   public async store({ request, auth }: HttpContext) {
     const user = auth.user
-    if (!user) throw new Error('Unauthorized')
+    if (!user) throw new PermissionDeniedException()
 
     const validated = await request.validateUsing(createTagValidator)
 

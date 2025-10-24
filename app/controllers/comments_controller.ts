@@ -1,3 +1,5 @@
+import Error400Exception from '#exceptions/error_400_exception'
+import PermissionDeniedException from '#exceptions/permission_denied_exception'
 import Comment from '#models/comment'
 import Snippet from '#models/snippet'
 import { createCommentValidator } from '#validators/comment'
@@ -26,13 +28,11 @@ export default class CommentsController {
   }
 
   async create({ request, auth }: HttpContext) {
-    if (!auth.user) {
-      return Error('Unauthorized')
-    }
+    if (!auth.user) throw new PermissionDeniedException()
     const validated = await request.validateUsing(createCommentValidator)
 
     if (!validated) {
-      return
+      throw new Error400Exception('Invalid comment data')
     }
 
     const trx: TransactionClientContract = await db.transaction()
@@ -54,9 +54,7 @@ export default class CommentsController {
   }
 
   async destroy({ request, auth }: HttpContext) {
-    if (!auth.user) {
-      return Error('Unauthorized')
-    }
+    if (!auth.user) throw new PermissionDeniedException()
 
     const commentId = request.param('id')
     const comment = await Comment.query()

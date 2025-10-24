@@ -2,6 +2,8 @@ import User from '#models/user'
 import type { HttpContext } from '@adonisjs/core/http'
 import { UserDto } from '../dtos/user.js'
 import { AccessToken } from '@adonisjs/auth/access_tokens'
+import TryAgainLaterException from '#exceptions/try_again_later_exception'
+import Error400Exception from '#exceptions/error_400_exception'
 
 export default class AuthController {
   async redirectToProvider({ ally, params }: HttpContext) {
@@ -12,11 +14,11 @@ export default class AuthController {
     const github = ally.use('github')
 
     if (github.accessDenied()) {
-      return 'Access was denied'
+      return new TryAgainLaterException()
     }
 
     if (github.stateMisMatch()) {
-      return 'We are unable to verify the request. Please try again'
+      return new TryAgainLaterException()
     }
 
     if (github.hasError()) {
@@ -31,7 +33,7 @@ export default class AuthController {
       const oldUserMail = await User.query().where('email', githubUser.email).first()
 
       if (oldUserMail) {
-        return new Error(
+        return new Error400Exception(
           'Email already in use. Please login using your existing method and link your GitHub account from settings.'
         )
       }
@@ -40,7 +42,7 @@ export default class AuthController {
         .where('username', githubUser.nickName || githubUser.name)
         .first()
       if (oldUserName) {
-        return new Error(
+        return new Error400Exception(
           'Username already in use. Please change your username from settings before linking your GitHub account.'
         )
       }
@@ -70,11 +72,11 @@ export default class AuthController {
     const discord = ally.use('discord')
 
     if (discord.accessDenied()) {
-      return 'Access was denied'
+      return new TryAgainLaterException()
     }
 
     if (discord.stateMisMatch()) {
-      return 'We are unable to verify the request. Please try again'
+      return new TryAgainLaterException()
     }
 
     if (discord.hasError()) {
@@ -89,7 +91,7 @@ export default class AuthController {
       const oldUserMail = await User.query().where('email', discordUser.email).first()
 
       if (oldUserMail) {
-        return new Error(
+        return new Error400Exception(
           'Email already in use. Please login using your existing method and link your Discord account from settings.'
         )
       }
@@ -99,7 +101,7 @@ export default class AuthController {
         .first()
 
       if (oldUserName) {
-        return new Error(
+        return new Error400Exception(
           'Username already in use. Please change your username from settings before linking your Discord account.'
         )
       }
