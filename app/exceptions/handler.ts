@@ -13,6 +13,8 @@ export default class HttpExceptionHandler extends ExceptionHandler {
    * response to the client
    */
   async handle(error: unknown, ctx: HttpContext) {
+    // TODO: Do not log actual error message
+
     return super.handle(error, ctx)
   }
 
