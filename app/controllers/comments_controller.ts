@@ -36,21 +36,26 @@ export default class CommentsController {
     }
 
     const trx: TransactionClientContract = await db.transaction()
-    const comment = new Comment()
+    try {
+      const comment = new Comment()
 
-    comment.content = validated.content
+      comment.content = validated.content
 
-    const snippet = await Snippet.query().where('id', validated.snippetId).firstOrFail()
+      const snippet = await Snippet.query().where('id', validated.snippetId).firstOrFail()
 
-    comment.useTransaction(trx)
-    await comment.save()
+      comment.useTransaction(trx)
+      await comment.save()
 
-    comment.related('snippet').associate(snippet)
-    comment.related('user').associate(auth.user)
+      comment.related('snippet').associate(snippet)
+      comment.related('user').associate(auth.user)
 
-    await trx.commit()
+      await trx.commit()
 
-    return comment
+      return comment
+    } catch (error) {
+      await trx.rollback()
+      throw error
+    }
   }
 
   async destroy({ request, auth }: HttpContext) {

@@ -15,6 +15,8 @@ export default class HttpExceptionHandler extends ExceptionHandler {
   async handle(error: unknown, ctx: HttpContext) {
     // TODO: Do not log actual error message
 
+    console.error('An error occurred:', error)
+
     return super.handle(error, ctx)
   }
 

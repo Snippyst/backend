@@ -49,5 +49,6 @@ export class SnippetDto extends SnippetMinimalDto {
     this.tags = data.tags ? TagDto.fromArray(data.tags) : []
     this.latestVersion = undefined
     this.versions = data.versions ? data.versions : undefined
+    this.copyRecommendation = data.copyRecommendation || null
   }
 }

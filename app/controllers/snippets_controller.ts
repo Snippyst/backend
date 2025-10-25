@@ -37,75 +37,86 @@ export default class SnippetsController {
 
     const trx = await db.transaction()
 
-    const snippet = new Snippet()
-
-    snippet.title = validated.title
-    snippet.description = validated.description || null
-    snippet.content = validated.content
-    snippet.isPublic = validated.isPublic ?? true
-    snippet.author = validated.author || null
-    snippet.copyRecommendation = validated.copyRecommendation || null
-
-    snippet.useTransaction(trx)
-
-    await snippet.related('createdBy').associate(user)
-
-    await snippet.save()
-
-    const fetchedTags = await Tag.query().whereIn('publicId', validated.tags || [])
-    await snippet.related('tags').sync(fetchedTags.map((tag) => tag.id))
-
-    const timeout = 2000
-    let result
-
     try {
-      result = await axios.post(
-        env.get('TYPST_URL') + '/render',
-        {
-          content: snippet.content,
-          timeout: timeout,
-        },
-        {
-          validateStatus: (status) => status === 200 || status === 400 || status === 408,
-        }
-      )
+      const snippet = new Snippet()
+
+      snippet.title = validated.title
+      snippet.description = validated.description || null
+      snippet.content = validated.content
+      snippet.isPublic = validated.isPublic ?? true
+      snippet.author = validated.author || null
+      snippet.copyRecommendation = validated.copyRecommendation || null
+
+      snippet.useTransaction(trx)
+
+      await snippet.related('createdBy').associate(user)
+
+      await snippet.save()
+
+      const fetchedTags = await Tag.query().whereIn('publicId', validated.tags || [])
+      await snippet.related('tags').sync(fetchedTags.map((tag) => tag.id))
+
+      const timeout = 500
+      let result
+
+      try {
+        console.log('Sending snippet to Typst rendering service...')
+        result = await axios.post(
+          env.get('TYPST_URL') + '/render',
+          {
+            content: snippet.content,
+            timeout: timeout,
+          },
+          {
+            timeout: timeout + 1000,
+            validateStatus: (status) => status === 200 || status === 400 || status === 408,
+          }
+        )
+      } catch (error) {
+        console.error('Error communicating with Typst rendering service:', error)
+        throw new ServiceUnavailableException(
+          'Typst rendering service is unavailable. Please try again later and contact support if the issue persists.'
+        )
+      }
+
+      console.log('Typst rendering service response status:', result.status)
+
+      if (result.status === 408) auth.user.computationTime -= timeout
+      else auth.user.computationTime -= result?.data?.time || timeout
+
+      await auth.user.save()
+
+      console.log('User remaining computation time:', auth.user.computationTime)
+
+      if (result.status !== 200) {
+        throw new Error400Exception('Failed to render snippet:\n' + result.data.message)
+      }
+
+      const svgKey = `${snippet.publicId}-${nanoid()}`
+      const key = `snippets/${svgKey}.svg`
+
+      // TODO: Stream
+      await drive.use().put(key, result.data.content)
+
+      snippet.image = svgKey
+
+      await snippet.related('versions').create({
+        version: result.data.version,
+        success: true,
+      })
+
+      await snippet.save()
+
+      await trx.commit()
+
+      await snippet.load('tags')
+      await snippet.load('versions')
+
+      return snippet
     } catch (error) {
       await trx.rollback()
-      throw new ServiceUnavailableException(
-        'Typst rendering service is unavailable. Please try again later and contact support if the issue persists.'
-      )
+      throw error
     }
-
-    if (result.status === 408) auth.user.computationTime -= timeout
-    else auth.user.computationTime -= result?.data?.time || timeout
-
-    await auth.user.save()
-
-    if (result.status !== 200) {
-      throw new Error400Exception('Failed to render snippet:\n' + result.data.message)
-    }
-
-    const svgKey = `${snippet.publicId}-${nanoid()}`
-    const key = `snippets/${svgKey}.svg`
-
-    // TODO: Stream
-    await drive.use().put(key, result.data.content)
-
-    snippet.image = svgKey
-
-    await snippet.related('versions').create({
-      version: result.data.version,
-      success: true,
-    })
-
-    await snippet.save()
-
-    await trx.commit()
-
-    await snippet.load('tags')
-    await snippet.load('versions')
-
-    return snippet
   }
 
   public async list({ request, auth }: HttpContext) {
