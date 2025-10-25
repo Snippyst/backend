@@ -56,7 +56,7 @@ export default class SnippetsController {
       const fetchedTags = await Tag.query().whereIn('publicId', validated.tags || [])
       await snippet.related('tags').sync(fetchedTags.map((tag) => tag.id))
 
-      const timeout = 500
+      const timeout = 5000
       let result
 
       try {

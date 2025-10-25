@@ -19,6 +19,7 @@ import Version from './version.js'
 import Package from './package.js'
 import Comment from './comment.js'
 import { ModelQueryBuilderContract } from '@adonisjs/lucid/types/model'
+import env from '#start/env'
 
 type Builder = ModelQueryBuilderContract<typeof Snippet>
 
@@ -34,7 +35,7 @@ export default class Snippet extends compose(BaseModel, SoftDeletes) {
 
   @computed({ serializeAs: 'image' })
   public getImage() {
-    return this.image ? `http://localhost:3333/uploads/snippets/${this.image}.svg` : null
+    return this.image ? `${env.get('APP_URL')}/uploads/snippets/${this.image}.svg` : null
   }
 
   @column({ serializeAs: null })
