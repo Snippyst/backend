@@ -9,7 +9,13 @@
 
 import router from '@adonisjs/core/services/router'
 import { middleware } from './kernel.js'
+import { sep, normalize } from 'node:path'
+import app from '@adonisjs/core/services/app'
 
+const PATH_TRAVERSAL_REGEX = /(?:^|[\\/])\.\.(?:[\\/]|$)/
+
+// Misc
+router.get('/uploads/snippets/:imageKey/preview', '#controllers/miscs_controller.image')
 router
   .group(() => {
     // Snippet
@@ -41,6 +47,7 @@ router
           .use(middleware.auth())
 
         router.get('/', '#controllers/tags_controller.list')
+        router.post('/multiple', '#controllers/tags_controller.multiple')
       })
       .prefix('/tags')
 
@@ -83,3 +90,21 @@ router
       .use(middleware.auth())
   })
   .prefix('/v1')
+
+router.get('/uploads/*', ({ request, response }) => {
+  const filePath = request.param('*').join(sep)
+  const normalizedPath = normalize(filePath)
+
+  if (PATH_TRAVERSAL_REGEX.test(normalizedPath)) {
+    return response.badRequest('Malformed path')
+  }
+
+  const expectedDir = app.makePath('storage')
+  const absolutePath = app.makePath('storage', normalizedPath)
+
+  if (!absolutePath.startsWith(expectedDir)) {
+    return response.badRequest('Malformed path')
+  }
+
+  return response.download(absolutePath)
+})

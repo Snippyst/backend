@@ -16,8 +16,7 @@ const driveConfig = defineConfig({
       visibility: 'public',
 
       appUrl: env.get('APP_URL'),
-      serveFiles: true,
-      routeBasePath: '/uploads',
+      serveFiles: false,
     }),
   },
 })

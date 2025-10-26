@@ -4,6 +4,7 @@ import { createTagValidator, listTagsValidator } from '#validators/tag'
 import { TagDto } from '../dtos/tag.js'
 import PermissionDeniedException from '#exceptions/permission_denied_exception'
 import Error400Exception from '#exceptions/error_400_exception'
+import { multipleIdsValidator } from '#validators/common'
 
 export default class TagsController {
   public async store({ request, auth }: HttpContext) {
@@ -40,5 +41,11 @@ export default class TagsController {
       .paginate(page, limit)
 
     return TagDto.fromPaginator(tags)
+  }
+
+  public async multiple({ request }: HttpContext) {
+    const validated = await request.validateUsing(multipleIdsValidator)
+    const tags = await Tag.query().whereIn('public_id', validated.ids)
+    return TagDto.fromArray(tags)
   }
 }

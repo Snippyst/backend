@@ -12,3 +12,9 @@ export const getByIdValidator = vine.compile(
     id: vine.string().minLength(16).maxLength(16),
   })
 )
+
+export const multipleIdsValidator = vine.compile(
+  vine.object({
+    ids: vine.array(vine.string().minLength(16).maxLength(16)).maxLength(50),
+  })
+)
