@@ -2,7 +2,11 @@ import vine from '@vinejs/vine'
 
 export const createTagValidator = vine.compile(
   vine.object({
-    name: vine.string().minLength(3).maxLength(30),
+    name: vine
+      .string()
+      .regex(/^[a-zA-Z0-9\s_-]+$/)
+      .minLength(3)
+      .maxLength(30),
     description: vine.string().maxLength(1024).optional(),
   })
 )

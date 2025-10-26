@@ -35,6 +35,13 @@ export default class SnippetsController {
 
     const validated = await request.validateUsing(createSnippetValidator)
 
+    const existingSnippet = await Snippet.query().where('title', 'ILIKE', validated.title).first()
+    if (existingSnippet) {
+      throw new Error400Exception(
+        'A snippet with this title already exists. Please choose a different title.'
+      )
+    }
+
     const trx = await db.transaction()
 
     try {
@@ -60,7 +67,6 @@ export default class SnippetsController {
       let result
 
       try {
-        console.log('Sending snippet to Typst rendering service...')
         result = await axios.post(
           env.get('TYPST_URL') + '/render',
           {
@@ -79,14 +85,16 @@ export default class SnippetsController {
         )
       }
 
-      console.log('Typst rendering service response status:', result.status)
-
       if (result.status === 408) auth.user.computationTime -= timeout
       else auth.user.computationTime -= result?.data?.time || timeout
 
       await auth.user.save()
 
-      console.log('User remaining computation time:', auth.user.computationTime)
+      if (result.status === 408) {
+        throw new Error400Exception(
+          'Rendering timed out. Please try simplifying your snippet. Due to caching sometimes a second attempt may succeed.'
+        )
+      }
 
       if (result.status !== 200) {
         throw new Error400Exception('Failed to render snippet:\n' + result.data.message)
