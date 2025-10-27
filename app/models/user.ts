@@ -40,7 +40,9 @@ export default class User extends compose(BaseModel, AuthFinder, SoftDeletes) {
   @column.dateTime()
   declare computationTimeReset: DateTime
 
-  @hasMany(() => Snippet)
+  @hasMany(() => Snippet, {
+    foreignKey: 'createdById',
+  })
   declare snippets: HasMany<typeof Snippet>
 
   @hasMany(() => Comment)

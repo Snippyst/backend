@@ -9,6 +9,7 @@ import type { HttpContext } from '@adonisjs/core/http'
 import db from '@adonisjs/lucid/services/db'
 import { SnippetDto, SnippetMinimalDto } from '../dtos/snippet.js'
 import Tag from '#models/tag'
+import Package from '#models/package'
 import axios from 'axios'
 import env from '#start/env'
 import drive from '@adonisjs/drive/services/main'
@@ -62,6 +63,29 @@ export default class SnippetsController {
 
       const fetchedTags = await Tag.query().whereIn('publicId', validated.tags || [])
       await snippet.related('tags').sync(fetchedTags.map((tag) => tag.id))
+
+      const packages = validated.packages || []
+      const packageAttachments: Record<number, { version: string }> = {}
+
+      for (const pkg of packages) {
+        const packageRecord = await Package.query()
+          .where('namespace', pkg.namespace)
+          .where('name', pkg.name)
+          .first()
+
+        if (!packageRecord) {
+          console.warn(`Package not found: ${pkg.namespace}/${pkg.name}. Skipping.`)
+          continue
+        }
+
+        packageAttachments[packageRecord.id] = {
+          version: pkg.version,
+        }
+      }
+
+      if (Object.keys(packageAttachments).length > 0) {
+        await snippet.related('usedPackages').attach(packageAttachments)
+      }
 
       const timeout = 5000
       let result
@@ -119,6 +143,7 @@ export default class SnippetsController {
 
       await snippet.load('tags')
       await snippet.load('versions')
+      await snippet.load('usedPackages', (q) => q.pivotColumns(['version']))
 
       return snippet
     } catch (error) {
@@ -135,7 +160,6 @@ export default class SnippetsController {
 
     const snippets = await Snippet.query()
       .withScopes((s) => s.minimal())
-      .withScopes((s) => s.isUpvotedByUser(auth.user))
       .orderBy(validated.sortBy || 'numberOfUpvotes', validated.sortOrder || 'desc')
       .orderBy('createdAt', 'desc')
       .if(validated.tags && validated.tags.length > 0, (query) => {
@@ -148,16 +172,21 @@ export default class SnippetsController {
           userQuery.where('publicId', validated.userId!)
         })
       })
-      .if(validated.versions && validated.versions.length > 0, (query) => {
-        query.whereHas('versions', (versionQuery) => {
-          validated.versions!.forEach((version) => {
-            versionQuery.orWhere((subQuery) => {
-              subQuery.where('namespace', version.namespace).andWhere('name', version.name)
-              if (version.version) {
-                subQuery.andWhere('version', version.version)
+      .if(validated.packages && validated.packages.length > 0, (query) => {
+        query.whereHas('usedPackages', (packageQuery) => {
+          validated.packages!.forEach((pkg) => {
+            packageQuery.orWhere((subQuery) => {
+              subQuery.where('namespace', pkg.namespace).andWhere('name', pkg.name)
+              if (pkg.version) {
+                subQuery.andWhere('version', pkg.version)
               }
             })
           })
+        })
+      })
+      .if(validated.versions && validated.versions.length > 0, (query) => {
+        query.whereHas('versions', (versionQuery) => {
+          versionQuery.whereIn('version', validated.versions || [])
         })
       })
       .if(validated.search, (query) => {
@@ -170,6 +199,53 @@ export default class SnippetsController {
       .paginate(page, limit)
 
     return SnippetMinimalDto.fromPaginator(snippets)
+  }
+
+  public async searchSuggestions({ request }: HttpContext) {
+    const validated = await request.validateUsing(listSnippetValidator)
+
+    const snippets = await Snippet.query()
+      .withScopes((s) => s.numberOfUpvotes())
+      .orderBy(validated.sortBy || 'numberOfUpvotes', validated.sortOrder || 'desc')
+      .orderBy('createdAt', 'desc')
+      .if(validated.tags && validated.tags.length > 0, (query) => {
+        query.whereHas('tags', (tagQuery) => {
+          tagQuery.whereIn('publicId', validated.tags || [])
+        })
+      })
+      .if(validated.userId, (query) => {
+        query.whereHas('createdBy', (userQuery) => {
+          userQuery.where('publicId', validated.userId!)
+        })
+      })
+      .if(validated.packages && validated.packages.length > 0, (query) => {
+        query.whereHas('usedPackages', (packageQuery) => {
+          validated.packages!.forEach((pkg) => {
+            packageQuery.orWhere((subQuery) => {
+              subQuery.where('namespace', pkg.namespace).andWhere('name', pkg.name)
+              if (pkg.version) {
+                subQuery.andWhere('version', pkg.version)
+              }
+            })
+          })
+        })
+      })
+      .if(validated.versions && validated.versions.length > 0, (query) => {
+        query.whereHas('versions', (versionQuery) => {
+          versionQuery.whereIn('version', validated.versions || [])
+        })
+      })
+      .if(validated.search, (query) => {
+        query.where((subQuery) => {
+          subQuery.where('title', 'ilike', `%${validated.search}%`)
+        })
+      })
+      .select('title')
+      .limit(10)
+
+    return {
+      suggestions: snippets.map((snippet) => snippet.title),
+    }
   }
 
   public async index({ request, auth }: HttpContext) {

@@ -1,10 +1,10 @@
 import Package from '#models/package'
-import { getByIdValidator, paginationValidator } from '#validators/common'
+import { getByIdValidator, paginationSearchValidator } from '#validators/common'
 import type { HttpContext } from '@adonisjs/core/http'
 
 export default class PackagesController {
   public async list({ request }: HttpContext) {
-    const validated = await request.validateUsing(paginationValidator)
+    const validated = await request.validateUsing(paginationSearchValidator)
     const page = validated.page || 1
     const limit = validated.limit || 10
 
@@ -12,6 +12,12 @@ export default class PackagesController {
       .distinctOn('namespace', 'name')
       .orderBy('namespace')
       .orderBy('name')
+      .if(validated.namespace, (query) => {
+        query.where('namespace', 'ILIKE', `%${validated.namespace}%`)
+      })
+      .if(validated.name, (query) => {
+        query.where('name', 'ILIKE', `%${validated.name}%`)
+      })
       .paginate(page, limit)
 
     return packages

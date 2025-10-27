@@ -88,6 +88,7 @@ export default class Snippet extends compose(BaseModel, SoftDeletes) {
   @manyToMany(() => Package, {
     pivotTable: 'package_snippet_relation',
     pivotTimestamps: true,
+    pivotColumns: ['version'],
   })
   declare usedPackages: ManyToMany<typeof Package>
 

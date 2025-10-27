@@ -18,3 +18,18 @@ export const multipleIdsValidator = vine.compile(
     ids: vine.array(vine.string().minLength(16).maxLength(16)).maxLength(50),
   })
 )
+
+export const searchByNameValidator = vine.compile(
+  vine.object({
+    username: vine.string().minLength(3).maxLength(100),
+  })
+)
+
+export const paginationSearchValidator = vine.compile(
+  vine.object({
+    namespace: vine.string().maxLength(100).optional(),
+    name: vine.string().maxLength(100).optional(),
+    page: vine.number().min(1).optional(),
+    limit: vine.number().min(1).max(100).optional(),
+  })
+)

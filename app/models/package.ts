@@ -18,12 +18,10 @@ export default class Package extends compose(BaseModel, SoftDeletes) {
   @column()
   declare name: string
 
-  @column()
-  declare version: string
-
   @manyToMany(() => Snippet, {
     pivotTable: 'package_snippet_relation',
     pivotTimestamps: true,
+    pivotColumns: ['version'],
   })
   declare snippets: ManyToMany<typeof Snippet>
 

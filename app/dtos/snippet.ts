@@ -4,6 +4,7 @@ import { UserMinimalDto } from './user.js'
 import { TagDto, TagMinimalDto } from './tag.js'
 import Version from '#models/version'
 import { DateTime } from 'luxon'
+import Package from '#models/package'
 
 export class SnippetMinimalDto extends BaseModelDto {
   declare id: string
@@ -40,6 +41,7 @@ export class SnippetDto extends SnippetMinimalDto {
   declare tags: TagDto[]
   declare versions?: Version[] | undefined
   declare copyRecommendation: string | null
+  declare packages?: PackageDto[] | undefined
 
   constructor(data: Snippet) {
     super(data)
@@ -50,5 +52,19 @@ export class SnippetDto extends SnippetMinimalDto {
     this.latestVersion = undefined
     this.versions = data.versions ? data.versions : undefined
     this.copyRecommendation = data.copyRecommendation || null
+    this.packages = data.usedPackages ? PackageDto.fromArray(data.usedPackages) : undefined
+  }
+}
+
+export class PackageDto extends BaseModelDto {
+  declare namespace: string
+  declare name: string
+  declare version?: string
+
+  constructor(data: Package) {
+    super()
+    this.namespace = data.namespace
+    this.name = data.name
+    this.version = data.$extras?.pivot_version
   }
 }

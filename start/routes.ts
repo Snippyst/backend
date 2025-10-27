@@ -30,6 +30,7 @@ router
           })
           .use(middleware.auth())
 
+        router.get('/suggest', '#controllers/snippets_controller.searchSuggestions')
         router.get('/:snippetId/comments', '#controllers/comments_controller.index')
         router.get('/', '#controllers/snippets_controller.list')
         router.get('/:id', '#controllers/snippets_controller.index')
@@ -88,6 +89,12 @@ router
       })
       .prefix('/comments')
       .use(middleware.auth())
+
+    router
+      .group(() => {
+        router.get('/', '#controllers/auth_controller.listUsers')
+      })
+      .prefix('/users')
   })
   .prefix('/v1')
 

@@ -1,9 +1,10 @@
 import User from '#models/user'
 import type { HttpContext } from '@adonisjs/core/http'
-import { UserDto } from '../dtos/user.js'
+import { UserDto, UserMinimalDto } from '../dtos/user.js'
 import { AccessToken } from '@adonisjs/auth/access_tokens'
 import TryAgainLaterException from '#exceptions/try_again_later_exception'
 import Error400Exception from '#exceptions/error_400_exception'
+import { searchByNameValidator } from '#validators/common'
 
 export default class AuthController {
   async redirectToProvider({ ally, params }: HttpContext) {
@@ -152,5 +153,17 @@ export default class AuthController {
     await user.forceDelete()
 
     return { success: true, message: 'Account deleted successfully' }
+  }
+
+  async listUsers({ request }: HttpContext) {
+    const validated = await request.validateUsing(searchByNameValidator)
+
+    const users = await User.query()
+      .orderBy('username', 'desc')
+      .where('username', 'ILIKE', `%${validated.username}%`)
+      .whereHas('snippets', (_) => {})
+      .limit(5)
+
+    return UserMinimalDto.fromArray(users)
   }
 }
