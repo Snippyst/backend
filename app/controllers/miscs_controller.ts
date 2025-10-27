@@ -47,7 +47,10 @@ export default class MiscsController {
 
     try {
       const svgBuffer = await readFile(absolutePath)
-      const pngBuffer = await sharp(svgBuffer, { density: 200 }).png({ quality: 50 }).toBuffer()
+      const pngBuffer = await sharp(svgBuffer, { density: 200 })
+        .png({ quality: 50 })
+        .flatten({ background: { r: 255, g: 255, b: 255 } })
+        .toBuffer()
 
       fsDrive.put(`snippets/previews/${normalizedPath}.png`, pngBuffer)
 

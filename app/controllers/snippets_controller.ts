@@ -143,6 +143,23 @@ export default class SnippetsController {
           tagQuery.whereIn('publicId', validated.tags || [])
         })
       })
+      .if(validated.userId, (query) => {
+        query.whereHas('createdBy', (userQuery) => {
+          userQuery.where('publicId', validated.userId!)
+        })
+      })
+      .if(validated.versions && validated.versions.length > 0, (query) => {
+        query.whereHas('versions', (versionQuery) => {
+          validated.versions!.forEach((version) => {
+            versionQuery.orWhere((subQuery) => {
+              subQuery.where('namespace', version.namespace).andWhere('name', version.name)
+              if (version.version) {
+                subQuery.andWhere('version', version.version)
+              }
+            })
+          })
+        })
+      })
       .if(validated.search, (query) => {
         query.where((subQuery) => {
           subQuery
