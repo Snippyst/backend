@@ -35,13 +35,15 @@ export const listSnippetValidator = vine.compile(
     limit: vine.number().min(1).max(100).optional(),
     tags: vine.array(vine.string().minLength(16).maxLength(16)).maxLength(5).optional(),
     userId: vine.string().minLength(16).maxLength(16).optional(),
-    versions: vine.array(
-      vine.object({
-        namespace: vine.string().minLength(1).maxLength(255),
-        name: vine.string().minLength(1).maxLength(255),
-        version: vine.string().minLength(1).maxLength(12).optional(),
-      })
-    ),
+    versions: vine
+      .array(
+        vine.object({
+          namespace: vine.string().minLength(1).maxLength(255),
+          name: vine.string().minLength(1).maxLength(255),
+          version: vine.string().minLength(1).maxLength(12).optional(),
+        })
+      )
+      .optional(),
     sortBy: vine.enum(['createdAt', 'updatedAt', 'numberOfUpvotes']).optional(),
     sortOrder: vine.enum(['asc', 'desc']).optional(),
     search: vine.string().minLength(3).maxLength(100).optional(),
