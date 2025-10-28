@@ -22,6 +22,28 @@ export const createSnippetValidator = vine.compile(
   })
 )
 
+export const updateSnippetValidator = vine.compile(
+  vine.object({
+    title: vine.string().minLength(3).maxLength(60).optional(),
+    description: vine.string().maxLength(16384).optional(),
+    content: vine.string().minLength(10).maxLength(32768).optional(),
+    tags: vine.array(vine.string().minLength(16).maxLength(16)).optional(),
+    author: vine.string().maxLength(100).optional(),
+    copyRecommendation: vine.string().maxLength(20).optional(),
+    packages: vine
+      .array(
+        vine.object({
+          namespace: vine.string().minLength(1).maxLength(255),
+          name: vine.string().minLength(1).maxLength(255),
+          version: vine.string().minLength(1).maxLength(12),
+        })
+      )
+      .maxLength(20)
+      .optional(),
+    isPublic: vine.boolean().optional(),
+  })
+)
+
 export const upvoteSnippetValidator = vine.compile(
   vine.object({
     snippetId: vine.string().minLength(16).maxLength(16),

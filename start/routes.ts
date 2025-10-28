@@ -27,6 +27,7 @@ router
             router.delete('/:id/delete', '#controllers/snippets_controller.destroy')
             router.post('/:snippetId/vote', '#controllers/snippets_controller.vote')
             router.post('/create', '#controllers/snippets_controller.store')
+            router.patch('/:id', '#controllers/snippets_controller.update')
           })
           .use(middleware.auth())
 

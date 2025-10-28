@@ -3,6 +3,7 @@ import { getByIdValidator } from '#validators/common'
 import {
   createSnippetValidator,
   listSnippetValidator,
+  updateSnippetValidator,
   upvoteSnippetValidator,
 } from '#validators/snippet'
 import type { HttpContext } from '@adonisjs/core/http'
@@ -18,12 +19,81 @@ import { DateTime } from 'luxon'
 import PermissionDeniedException from '#exceptions/permission_denied_exception'
 import ServiceUnavailableException from '#exceptions/service_unavailable_exception'
 import Error400Exception from '#exceptions/error_400_exception'
+import User from '#models/user'
 
 export default class SnippetsController {
-  public async store({ request, auth }: HttpContext) {
-    const user = auth.user
-    if (!user) throw new PermissionDeniedException()
+  private async renderSnippet(
+    content: string,
+    user: User
+  ): Promise<{ svgContent: string; version: string; timeUsed: number }> {
+    const timeout = 5000
+    let result
 
+    try {
+      result = await axios.post(
+        env.get('TYPST_URL') + '/render',
+        {
+          content: content,
+          timeout: timeout,
+        },
+        {
+          timeout: timeout + 1000,
+          validateStatus: (status) => status === 200 || status === 400 || status === 408,
+        }
+      )
+    } catch (error) {
+      console.error('Error communicating with Typst rendering service:', error)
+      throw new ServiceUnavailableException(
+        'Typst rendering service is unavailable. Please try again later and contact support if the issue persists.'
+      )
+    }
+
+    const timeUsed = result.status === 408 ? timeout : result?.data?.time || timeout
+
+    user.computationTime -= timeUsed
+    await user.save()
+
+    if (result.status === 408) {
+      throw new Error400Exception('Rendering timed out. Please try simplifying your snippet.')
+    }
+
+    if (result.status !== 200) {
+      throw new Error400Exception('Failed to render snippet:\n' + result.data.message)
+    }
+
+    return {
+      svgContent: result.data.content,
+      version: result.data.version,
+      timeUsed,
+    }
+  }
+
+  private async attachPackages(
+    snippet: Snippet,
+    packages: Array<{ namespace: string; name: string; version: string }>
+  ) {
+    const packageAttachments: Record<number, { version: string }> = {}
+
+    for (const pkg of packages) {
+      const packageRecord = await Package.query()
+        .where('namespace', pkg.namespace)
+        .where('name', pkg.name)
+        .first()
+
+      if (!packageRecord) {
+        console.warn(`Package not found: ${pkg.namespace}/${pkg.name}. Skipping.`)
+        continue
+      }
+
+      packageAttachments[packageRecord.id] = {
+        version: pkg.version,
+      }
+    }
+
+    await snippet.related('usedPackages').sync(packageAttachments)
+  }
+
+  private async checkComputationTime(user: User) {
     if (user.computationTimeReset && user.computationTimeReset < DateTime.now()) {
       user.computationTime = 60000
       user.computationTimeReset = DateTime.now().set({ hour: 23, minute: 59, second: 59 })
@@ -33,6 +103,13 @@ export default class SnippetsController {
         'Insufficient computation time. Please try again tomorrow or request a manual approval from support.'
       )
     }
+  }
+
+  public async store({ request, auth }: HttpContext) {
+    const user = auth.user
+    if (!user) throw new PermissionDeniedException()
+
+    await this.checkComputationTime(user)
 
     const validated = await request.validateUsing(createSnippetValidator)
 
@@ -64,80 +141,133 @@ export default class SnippetsController {
       const fetchedTags = await Tag.query().whereIn('publicId', validated.tags || [])
       await snippet.related('tags').sync(fetchedTags.map((tag) => tag.id))
 
-      const packages = validated.packages || []
-      const packageAttachments: Record<number, { version: string }> = {}
-
-      for (const pkg of packages) {
-        const packageRecord = await Package.query()
-          .where('namespace', pkg.namespace)
-          .where('name', pkg.name)
-          .first()
-
-        if (!packageRecord) {
-          console.warn(`Package not found: ${pkg.namespace}/${pkg.name}. Skipping.`)
-          continue
-        }
-
-        packageAttachments[packageRecord.id] = {
-          version: pkg.version,
-        }
+      if (validated.packages && validated.packages.length > 0) {
+        await this.attachPackages(snippet, validated.packages)
       }
 
-      if (Object.keys(packageAttachments).length > 0) {
-        await snippet.related('usedPackages').attach(packageAttachments)
-      }
-
-      const timeout = 5000
-      let result
-
-      try {
-        result = await axios.post(
-          env.get('TYPST_URL') + '/render',
-          {
-            content: snippet.content,
-            timeout: timeout,
-          },
-          {
-            timeout: timeout + 1000,
-            validateStatus: (status) => status === 200 || status === 400 || status === 408,
-          }
-        )
-      } catch (error) {
-        console.error('Error communicating with Typst rendering service:', error)
-        throw new ServiceUnavailableException(
-          'Typst rendering service is unavailable. Please try again later and contact support if the issue persists.'
-        )
-      }
-
-      if (result.status === 408) auth.user.computationTime -= timeout
-      else auth.user.computationTime -= result?.data?.time || timeout
-
-      await auth.user.save()
-
-      if (result.status === 408) {
-        throw new Error400Exception(
-          'Rendering timed out. Please try simplifying your snippet. Due to caching sometimes a second attempt may succeed.'
-        )
-      }
-
-      if (result.status !== 200) {
-        throw new Error400Exception('Failed to render snippet:\n' + result.data.message)
-      }
+      const { svgContent, version } = await this.renderSnippet(snippet.content, user)
 
       const svgKey = `${snippet.publicId}-${nanoid()}`
       const key = `snippets/${svgKey}.svg`
 
-      // TODO: Stream
-      await drive.use().put(key, result.data.content)
+      await drive.use().put(key, svgContent)
 
       snippet.image = svgKey
 
-      await snippet.related('versions').create({
-        version: result.data.version,
-        success: true,
-      })
+      const existingVersion = await snippet
+        .related('versions')
+        .query()
+        .where('version', version)
+        .where('success', true)
+        .first()
+
+      if (!existingVersion) {
+        await snippet.related('versions').create({
+          version: version,
+          success: true,
+        })
+      }
 
       await snippet.save()
+
+      await trx.commit()
+
+      await snippet.load('tags')
+      await snippet.load('versions')
+      await snippet.load('usedPackages', (q) => q.pivotColumns(['version']))
+
+      return snippet
+    } catch (error) {
+      await trx.rollback()
+      throw error
+    }
+  }
+
+  public async update({ request, auth, params }: HttpContext) {
+    const user = auth.user
+    if (!user) throw new PermissionDeniedException()
+
+    const { id } = await getByIdValidator.validate(params)
+    const validated = await request.validateUsing(updateSnippetValidator)
+
+    if (Object.keys(validated).length === 0) {
+      throw new Error400Exception('No fields provided for update.')
+    }
+
+    const snippet = await Snippet.query()
+      .where('publicId', id)
+      .where('created_by_id', user.id)
+      .firstOrFail()
+
+    if (validated.title && validated.title !== snippet.title) {
+      const existingSnippet = await Snippet.query()
+        .where('title', 'ILIKE', validated.title)
+        .whereNot('id', snippet.id)
+        .first()
+
+      if (existingSnippet) {
+        throw new Error400Exception(
+          'A snippet with this title already exists. Please choose a different title.'
+        )
+      }
+    }
+
+    const contentChanged = validated.content && validated.content !== snippet.content
+
+    if (contentChanged) {
+      await this.checkComputationTime(user)
+    }
+
+    const trx = await db.transaction()
+
+    try {
+      snippet.useTransaction(trx)
+
+      if (validated.title !== undefined) snippet.title = validated.title
+      if (validated.description !== undefined) snippet.description = validated.description || null
+      if (validated.content !== undefined) snippet.content = validated.content
+      if (validated.isPublic !== undefined) snippet.isPublic = validated.isPublic
+      if (validated.author !== undefined) snippet.author = validated.author || null
+      if (validated.copyRecommendation !== undefined)
+        snippet.copyRecommendation = validated.copyRecommendation || null
+
+      await snippet.save()
+
+      if (validated.tags !== undefined) {
+        const fetchedTags = await Tag.query().whereIn('publicId', validated.tags)
+        await snippet.related('tags').sync(fetchedTags.map((tag) => tag.id))
+      }
+
+      if (validated.packages !== undefined) {
+        await this.attachPackages(snippet, validated.packages)
+      }
+
+      if (contentChanged) {
+        const { svgContent, version } = await this.renderSnippet(snippet.content, user)
+
+        const svgKey = `${snippet.publicId}-${nanoid()}`
+        const key = `snippets/${svgKey}.svg`
+
+        await drive.use().put(key, svgContent)
+
+        snippet.image = svgKey
+
+        const existingVersion = await snippet
+          .related('versions')
+          .query()
+          .where('version', version)
+          .where('success', true)
+          .first()
+
+        if (!existingVersion) {
+          await snippet.related('versions').create({
+            version: version,
+            success: true,
+          })
+        }
+
+        await snippet.save()
+      }
 
       await trx.commit()
 
