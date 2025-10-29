@@ -20,6 +20,7 @@ import PermissionDeniedException from '#exceptions/permission_denied_exception'
 import ServiceUnavailableException from '#exceptions/service_unavailable_exception'
 import Error400Exception from '#exceptions/error_400_exception'
 import User from '#models/user'
+import locks from '@adonisjs/lock/services/main'
 
 export default class SnippetsController {
   private async renderSnippet(
@@ -93,7 +94,7 @@ export default class SnippetsController {
     await snippet.related('usedPackages').sync(packageAttachments)
   }
 
-  private async checkComputationTime(user: User) {
+  private async checkComputationTime(user: User, lock: any) {
     if (user.computationTimeReset && user.computationTimeReset < DateTime.now()) {
       user.computationTime = 60000
       user.computationTimeReset = DateTime.now().set({ hour: 23, minute: 59, second: 59 })
@@ -108,8 +109,6 @@ export default class SnippetsController {
   public async store({ request, auth }: HttpContext) {
     const user = auth.user
     if (!user) throw new PermissionDeniedException()
-
-    await this.checkComputationTime(user)
 
     const validated = await request.validateUsing(createSnippetValidator)
 
@@ -214,8 +213,10 @@ export default class SnippetsController {
 
     const contentChanged = validated.content && validated.content !== snippet.content
 
+    const lock = locks.createLock(`render.processing.${user.id}`, 5 * 60 * 1000)
+
     if (contentChanged) {
-      await this.checkComputationTime(user)
+      await this.checkComputationTime(user, lock)
     }
 
     const trx = await db.transaction()

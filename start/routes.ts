@@ -11,6 +11,13 @@ import router from '@adonisjs/core/services/router'
 import { middleware } from './kernel.js'
 import { sep, normalize } from 'node:path'
 import app from '@adonisjs/core/services/app'
+import {
+  authThrottle,
+  changeDataThrottle,
+  listThrottle,
+  singleItemThrottle,
+  throttle,
+} from './limiter.js'
 
 const PATH_TRAVERSAL_REGEX = /(?:^|[\\/])\.\.(?:[\\/]|$)/
 
@@ -30,11 +37,12 @@ router
             router.patch('/:id', '#controllers/snippets_controller.update')
           })
           .use(middleware.auth())
+          .use(changeDataThrottle)
 
         router.get('/suggest', '#controllers/snippets_controller.searchSuggestions')
         router.get('/:snippetId/comments', '#controllers/comments_controller.index')
-        router.get('/', '#controllers/snippets_controller.list')
-        router.get('/:id', '#controllers/snippets_controller.index')
+        router.get('/', '#controllers/snippets_controller.list').use(listThrottle)
+        router.get('/:id', '#controllers/snippets_controller.index').use(singleItemThrottle)
       })
       .prefix('/snippets')
 
@@ -47,9 +55,10 @@ router
             router.post('/create', '#controllers/tags_controller.store')
           })
           .use(middleware.auth())
+          .use(changeDataThrottle)
 
-        router.get('/', '#controllers/tags_controller.list')
-        router.post('/multiple', '#controllers/tags_controller.multiple')
+        router.get('/', '#controllers/tags_controller.list').use(listThrottle)
+        router.post('/multiple', '#controllers/tags_controller.multiple').use(listThrottle)
       })
       .prefix('/tags')
 
@@ -59,8 +68,12 @@ router
         .get('/:provider/redirect', '#controllers/auth_controller.redirectToProvider')
         .where('provider', /github|discord/)
 
-      router.get('/github/callback', '#controllers/auth_controller.githubCallback')
-      router.get('/discord/callback', '#controllers/auth_controller.discordCallback')
+      router
+        .get('/github/callback', '#controllers/auth_controller.githubCallback')
+        .use(authThrottle)
+      router
+        .get('/discord/callback', '#controllers/auth_controller.discordCallback')
+        .use(authThrottle)
 
       router.post('/logout', '#controllers/auth_controller.logout').use(middleware.auth())
     })
@@ -68,7 +81,7 @@ router
     // Me
     router
       .group(() => {
-        router.get('/', '#controllers/auth_controller.me')
+        router.get('/', '#controllers/auth_controller.me').use(authThrottle)
         router.delete('/delete', '#controllers/auth_controller.deleteAccount')
       })
       .prefix('/me')
@@ -78,7 +91,7 @@ router
     router
       .group(() => {
         // Auth
-        router.get('/', '#controllers/packages_controller.list')
+        router.get('/', '#controllers/packages_controller.list').use(listThrottle)
       })
       .prefix('/packages')
 
@@ -90,14 +103,16 @@ router
       })
       .prefix('/comments')
       .use(middleware.auth())
+      .use(changeDataThrottle)
 
     router
       .group(() => {
-        router.get('/', '#controllers/auth_controller.listUsers')
+        router.get('/', '#controllers/auth_controller.listUsers').use(listThrottle)
       })
       .prefix('/users')
   })
   .prefix('/v1')
+  .use(throttle)
 
 router.get('/uploads/*', ({ request, response }) => {
   const filePath = request.param('*').join(sep)
