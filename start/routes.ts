@@ -53,6 +53,8 @@ router
         router
           .group(() => {
             router.post('/create', '#controllers/tags_controller.store')
+            router.patch('/:id', '#controllers/tags_controller.update')
+            router.delete('/:id', '#controllers/tags_controller.destroy')
           })
           .use(middleware.auth())
           .use(changeDataThrottle)
@@ -108,6 +110,15 @@ router
     router
       .group(() => {
         router.get('/', '#controllers/auth_controller.listUsers').use(listThrottle)
+        router.post('/disable', '#controllers/auth_controller.disableUser').use(middleware.auth())
+        router.post('/enable', '#controllers/auth_controller.enableUser').use(middleware.auth())
+        router
+          .delete('/delete', '#controllers/auth_controller.deleteAccount')
+          .use(middleware.auth())
+        router
+          .get('/admin-list', '#controllers/auth_controller.listUsersModerator')
+          .use(listThrottle)
+          .use(middleware.auth())
       })
       .prefix('/users')
   })

@@ -83,4 +83,19 @@ export default class TagsController {
 
     return new TagDto(tag)
   }
+
+  public async destroy({ auth, params }: HttpContext) {
+    const user = auth.user
+    if (!user) throw new PermissionDeniedException()
+    if (!user.currentAccessToken.allows('tags:delete')) throw new PermissionDeniedException()
+
+    const tag = await Tag.findBy('publicId', params.id)
+    if (!tag) {
+      throw new Error400Exception('Tag not found')
+    }
+
+    await tag.delete()
+
+    return { success: true, message: 'Tag deleted successfully' }
+  }
 }

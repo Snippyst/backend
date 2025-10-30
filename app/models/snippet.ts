@@ -110,18 +110,23 @@ export default class Snippet extends compose(BaseModel, SoftDeletes) {
 
   static minimal = scope((query: Builder) => {
     query
-      .preload('createdBy')
       .preload('tags')
       .withScopes((s) => s.numberOfUpvotes())
+      .withScopes((s) => s.createdByScope())
   })
 
   static fullAll = scope((query: Builder) => {
     query
-      .preload('createdBy')
       .preload('tags')
       .withScopes((s) => s.package())
       .preload('versions')
       .withScopes((s) => s.numberOfUpvotes())
+      .withScopes((s) => s.createdByScope())
+  })
+
+  static createdByScope = scope((query: Builder) => {
+    // @ts-ignore
+    query.preload('createdBy', (q) => q.withTrashed())
   })
 
   static numberOfUpvotes = scope((query: Builder) => {

@@ -189,7 +189,7 @@ export default class SnippetsController {
   public async update({ request, auth, params }: HttpContext) {
     const user = auth.user
     if (!user) throw new PermissionDeniedException()
-    if (!user.currentAccessToken.allows('snippets:update')) throw new PermissionDeniedException()
+    if (!user.currentAccessToken.allows('snippets:edit')) throw new PermissionDeniedException()
 
     const { id } = await getByIdValidator.validate(params)
     const validated = await request.validateUsing(updateSnippetValidator)

@@ -1,10 +1,14 @@
 import User from '#models/user'
 import type { HttpContext } from '@adonisjs/core/http'
-import { UserDto, UserMinimalDto } from '../dtos/user.js'
+import { AdminUserDto, UserDto, UserMinimalDto } from '../dtos/user.js'
 import { AccessToken } from '@adonisjs/auth/access_tokens'
 import TryAgainLaterException from '#exceptions/try_again_later_exception'
 import Error400Exception from '#exceptions/error_400_exception'
-import { getByIdValidator, searchByNameValidator } from '#validators/common'
+import {
+  getByIdValidator,
+  optionalSearchValidator,
+  searchByNameValidator,
+} from '#validators/common'
 import PermissionDeniedException from '#exceptions/permission_denied_exception'
 
 export default class AuthController {
@@ -164,6 +168,9 @@ export default class AuthController {
       if (!targetUser) {
         throw new Error400Exception('User not found')
       }
+      if (targetUser.abilities.includes('admin') || targetUser.abilities.includes('moderator')) {
+        throw new PermissionDeniedException()
+      }
       userToDelete = targetUser
     }
 
@@ -184,6 +191,26 @@ export default class AuthController {
     return UserMinimalDto.fromArray(users)
   }
 
+  async listUsersModerator({ request, auth }: HttpContext) {
+    if (!auth.user || !auth.user.currentAccessToken.allows('users:manage')) {
+      throw new PermissionDeniedException()
+    }
+    const validated = await request.validateUsing(optionalSearchValidator)
+
+    // @ts-ignore
+    const query = User.query().orderBy('createdAt', 'desc').withTrashed()
+
+    if (validated.search) {
+      query
+        .where('username', 'ILIKE', `%${validated.search}%`)
+        .orWhere('email', 'ILIKE', `%${validated.search}%`)
+    }
+
+    const users = await query.paginate(validated.page || 1, validated.limit || 20)
+
+    return AdminUserDto.fromPaginator(users)
+  }
+
   async disableUser({ request, auth }: HttpContext) {
     if (!auth.user || !auth.user.currentAccessToken.allows('users:manage')) {
       throw new PermissionDeniedException()
@@ -193,6 +220,9 @@ export default class AuthController {
     if (!user) {
       throw new Error400Exception('User not found')
     }
+    if (user.abilities.includes('admin')) {
+      throw new PermissionDeniedException()
+    }
     await user.delete()
 
     const tokens = await User.accessTokens.all(user)
@@ -201,5 +231,16 @@ export default class AuthController {
     }
 
     return { success: true, message: 'User disabled successfully' }
+  }
+
+  async enableUser({ request, auth }: HttpContext) {
+    if (!auth.user || !auth.user.currentAccessToken.allows('users:manage')) {
+      throw new PermissionDeniedException()
+    }
+    const validated = await request.validateUsing(getByIdValidator)
+    // @ts-ignore
+    const user = await User.query().withTrashed().where('publicId', validated.id).restore()
+
+    return { success: true, message: 'User enabled successfully' }
   }
 }

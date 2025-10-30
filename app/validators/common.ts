@@ -25,6 +25,14 @@ export const searchByNameValidator = vine.compile(
   })
 )
 
+export const optionalSearchValidator = vine.compile(
+  vine.object({
+    page: vine.number().min(1).optional(),
+    limit: vine.number().min(1).max(100).optional(),
+    search: vine.string().maxLength(100).optional(),
+  })
+)
+
 export const paginationSearchValidator = vine.compile(
   vine.object({
     namespace: vine.string().maxLength(100).optional(),
