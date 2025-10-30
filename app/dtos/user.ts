@@ -17,6 +17,8 @@ export class UserDto extends UserMinimalDto {
   declare githubId: string | null
   declare discordId: string | null
   declare computationTime: number
+  declare isPrivileged: boolean
+  declare abilities: string[]
 
   constructor(data: User) {
     super(data)
@@ -24,5 +26,7 @@ export class UserDto extends UserMinimalDto {
     this.githubId = data.githubId
     this.discordId = data.discordId
     this.computationTime = data.computationTime
+    this.isPrivileged = data.isPrivileged
+    this.abilities = data.abilities
   }
 }

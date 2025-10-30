@@ -4,7 +4,8 @@ import { UserDto, UserMinimalDto } from '../dtos/user.js'
 import { AccessToken } from '@adonisjs/auth/access_tokens'
 import TryAgainLaterException from '#exceptions/try_again_later_exception'
 import Error400Exception from '#exceptions/error_400_exception'
-import { searchByNameValidator } from '#validators/common'
+import { getByIdValidator, searchByNameValidator } from '#validators/common'
+import PermissionDeniedException from '#exceptions/permission_denied_exception'
 
 export default class AuthController {
   async redirectToProvider({ ally, params }: HttpContext) {
@@ -57,9 +58,7 @@ export default class AuthController {
 
     await user.save()
 
-    const token = await User.accessTokens.create(user, ['snippets:write'], {
-      expiresIn: '7 days',
-    })
+    const token = await this.createToken(user)
 
     await this.cookieSet(response, token)
 
@@ -115,9 +114,7 @@ export default class AuthController {
 
     await user.save()
 
-    const token = await User.accessTokens.create(user, ['snippets:write'], {
-      expiresIn: '7 days',
-    })
+    const token = await this.createToken(user)
 
     await this.cookieSet(response, token)
 
@@ -125,6 +122,16 @@ export default class AuthController {
       user,
       token,
     }
+  }
+
+  async createToken(user: User): Promise<AccessToken> {
+    if (!Array.isArray(user.abilities) || user.abilities.length === 0) {
+      throw new Error400Exception('User has no abilities assigned')
+    }
+    const token = await User.accessTokens.create(user, user.abilities, {
+      expiresIn: '30 days',
+    })
+    return token
   }
 
   async cookieSet(response: any, token: AccessToken) {
@@ -147,10 +154,20 @@ export default class AuthController {
     return { success: true, message: 'Logged out successfully' }
   }
 
-  async deleteAccount({ auth }: HttpContext) {
-    const user = auth.user!
+  async deleteAccount({ auth, request }: HttpContext) {
+    let user = auth.user!
+    let userToDelete: User = user
 
-    await user.forceDelete()
+    if (user.currentAccessToken.allows('users:manage')) {
+      const validated = await request.validateUsing(getByIdValidator)
+      const targetUser = await User.findBy('publicId', validated.id)
+      if (!targetUser) {
+        throw new Error400Exception('User not found')
+      }
+      userToDelete = targetUser
+    }
+
+    await userToDelete.forceDelete()
 
     return { success: true, message: 'Account deleted successfully' }
   }
@@ -165,5 +182,24 @@ export default class AuthController {
       .limit(5)
 
     return UserMinimalDto.fromArray(users)
+  }
+
+  async disableUser({ request, auth }: HttpContext) {
+    if (!auth.user || !auth.user.currentAccessToken.allows('users:manage')) {
+      throw new PermissionDeniedException()
+    }
+    const validated = await request.validateUsing(getByIdValidator)
+    const user = await User.findBy('publicId', validated.id)
+    if (!user) {
+      throw new Error400Exception('User not found')
+    }
+    await user.delete()
+
+    const tokens = await User.accessTokens.all(user)
+    for (const token of tokens) {
+      await User.accessTokens.delete(user, token.identifier)
+    }
+
+    return { success: true, message: 'User disabled successfully' }
   }
 }

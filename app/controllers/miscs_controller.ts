@@ -48,6 +48,12 @@ export default class MiscsController {
     try {
       const svgBuffer = await readFile(absolutePath)
       const pngBuffer = await sharp(svgBuffer, { density: 200 })
+        .resize({
+          width: 2000,
+          height: 2000,
+          fit: 'inside',
+          withoutEnlargement: true,
+        })
         .png({ quality: 50 })
         .flatten({ background: { r: 255, g: 255, b: 255 } })
         .toBuffer()

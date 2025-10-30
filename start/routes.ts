@@ -81,7 +81,7 @@ router
     // Me
     router
       .group(() => {
-        router.get('/', '#controllers/auth_controller.me').use(authThrottle)
+        router.get('/', '#controllers/auth_controller.me')
         router.delete('/delete', '#controllers/auth_controller.deleteAccount')
       })
       .prefix('/me')

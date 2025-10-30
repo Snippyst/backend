@@ -29,6 +29,8 @@ export default class CommentsController {
 
   async create({ request, auth }: HttpContext) {
     if (!auth.user) throw new PermissionDeniedException()
+    if (!auth.user.currentAccessToken.allows('comments:create'))
+      throw new PermissionDeniedException()
     const validated = await request.validateUsing(createCommentValidator)
 
     if (!validated) {
@@ -60,11 +62,15 @@ export default class CommentsController {
 
   async destroy({ request, auth }: HttpContext) {
     if (!auth.user) throw new PermissionDeniedException()
+    if (!auth.user.currentAccessToken.allows('comments:delete'))
+      throw new PermissionDeniedException()
 
     const commentId = request.param('id')
     const comment = await Comment.query()
       .where('id', commentId)
-      .where('user_id', auth.user.id)
+      .if(!auth.user.currentAccessToken.allows('comments:manage'), (query) => {
+        query.where('user_id', auth!.user!.id)
+      })
       .firstOrFail()
 
     await comment.delete()

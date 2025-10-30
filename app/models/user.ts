@@ -1,7 +1,7 @@
 import { DateTime } from 'luxon'
 import hash from '@adonisjs/core/services/hash'
 import { compose } from '@adonisjs/core/helpers'
-import { BaseModel, beforeCreate, column, hasMany } from '@adonisjs/lucid/orm'
+import { BaseModel, beforeCreate, column, computed, hasMany } from '@adonisjs/lucid/orm'
 import { withAuthFinder } from '@adonisjs/auth/mixins/lucid'
 import { DbAccessTokensProvider } from '@adonisjs/auth/access_tokens'
 import { SoftDeletes } from 'adonis-lucid-soft-deletes'
@@ -36,6 +36,14 @@ export default class User extends compose(BaseModel, AuthFinder, SoftDeletes) {
 
   @column()
   declare computationTime: number
+
+  @column({ serializeAs: null })
+  declare abilities: string[]
+
+  @computed()
+  get isPrivileged() {
+    return this.abilities.includes('admin') || this.abilities.includes('moderator')
+  }
 
   @column.dateTime()
   declare computationTimeReset: DateTime

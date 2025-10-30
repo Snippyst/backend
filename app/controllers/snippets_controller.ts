@@ -20,7 +20,6 @@ import PermissionDeniedException from '#exceptions/permission_denied_exception'
 import ServiceUnavailableException from '#exceptions/service_unavailable_exception'
 import Error400Exception from '#exceptions/error_400_exception'
 import User from '#models/user'
-import locks from '@adonisjs/lock/services/main'
 
 export default class SnippetsController {
   private async renderSnippet(
@@ -94,7 +93,7 @@ export default class SnippetsController {
     await snippet.related('usedPackages').sync(packageAttachments)
   }
 
-  private async checkComputationTime(user: User, lock: any) {
+  private async checkComputationTime(user: User) {
     if (user.computationTimeReset && user.computationTimeReset < DateTime.now()) {
       user.computationTime = 60000
       user.computationTimeReset = DateTime.now().set({ hour: 23, minute: 59, second: 59 })
@@ -109,6 +108,11 @@ export default class SnippetsController {
   public async store({ request, auth }: HttpContext) {
     const user = auth.user
     if (!user) throw new PermissionDeniedException()
+    if (!user.currentAccessToken.allows('snippets:create')) throw new PermissionDeniedException()
+
+    console.log(user.currentAccessToken.abilities)
+
+    await this.checkComputationTime(user)
 
     const validated = await request.validateUsing(createSnippetValidator)
 
@@ -185,6 +189,7 @@ export default class SnippetsController {
   public async update({ request, auth, params }: HttpContext) {
     const user = auth.user
     if (!user) throw new PermissionDeniedException()
+    if (!user.currentAccessToken.allows('snippets:update')) throw new PermissionDeniedException()
 
     const { id } = await getByIdValidator.validate(params)
     const validated = await request.validateUsing(updateSnippetValidator)
@@ -195,7 +200,9 @@ export default class SnippetsController {
 
     const snippet = await Snippet.query()
       .where('publicId', id)
-      .where('created_by_id', user.id)
+      .if(!user.currentAccessToken.allows('snippets:manage'), (query) => {
+        query.where('created_by_id', user.id)
+      })
       .firstOrFail()
 
     if (validated.title && validated.title !== snippet.title) {
@@ -213,10 +220,8 @@ export default class SnippetsController {
 
     const contentChanged = validated.content && validated.content !== snippet.content
 
-    const lock = locks.createLock(`render.processing.${user.id}`, 5 * 60 * 1000)
-
     if (contentChanged) {
-      await this.checkComputationTime(user, lock)
+      await this.checkComputationTime(user)
     }
 
     const trx = await db.transaction()
@@ -419,12 +424,16 @@ export default class SnippetsController {
     if (!auth.user) {
       return new PermissionDeniedException()
     }
+    if (!auth.user.currentAccessToken.allows('snippets:delete'))
+      throw new PermissionDeniedException()
 
     const validated = await getByIdValidator.validate(request.params())
 
     const snippet = await Snippet.query()
       .where('publicId', validated.id)
-      .where('created_by_id', auth.user.id)
+      .if(!auth.user.currentAccessToken.allows('snippets:manage'), (query) => {
+        query.where('created_by_id', auth!.user!.id)
+      })
       .firstOrFail()
 
     await snippet.delete()
