@@ -129,6 +129,8 @@ export default class AuthController {
   }
 
   async createToken(user: User): Promise<AccessToken> {
+    user = await User.query().where('id', user.id).firstOrFail()
+
     if (!Array.isArray(user.abilities) || user.abilities.length === 0) {
       throw new Error400Exception('User has no abilities assigned')
     }
