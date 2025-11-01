@@ -1,6 +1,7 @@
 import Snippet from '#models/snippet'
 import { getByIdValidator } from '#validators/common'
 import {
+  availableSnippetVersions,
   createSnippetValidator,
   listSnippetValidator,
   updateSnippetValidator,
@@ -22,11 +23,11 @@ import Error400Exception from '#exceptions/error_400_exception'
 import User from '#models/user'
 
 export default class SnippetsController {
-  private async renderSnippet(
+  private async renderSnippetWithVersion(
     content: string,
-    user: User
-  ): Promise<{ svgContent: string; version: string; timeUsed: number }> {
-    const timeout = 5000
+    version: string,
+    timeout: number = 5000
+  ): Promise<{ svgContent: string; version: string; timeUsed: number; success: boolean }> {
     let result
 
     try {
@@ -34,6 +35,7 @@ export default class SnippetsController {
         env.get('TYPST_URL') + '/render',
         {
           content: content,
+          version: version,
           timeout: timeout,
         },
         {
@@ -50,22 +52,79 @@ export default class SnippetsController {
 
     const timeUsed = result.status === 408 ? timeout : result?.data?.time || timeout
 
-    user.computationTime -= timeUsed
-    await user.save()
-
-    if (result.status === 408) {
-      throw new Error400Exception('Rendering timed out. Please try simplifying your snippet.')
-    }
-
-    if (result.status !== 200) {
-      throw new Error400Exception('Failed to render snippet:\n' + result.data.message)
+    if (result.status === 408 || result.status !== 200) {
+      return {
+        svgContent: '',
+        version,
+        timeUsed,
+        success: false,
+      }
     }
 
     return {
       svgContent: result.data.content,
       version: result.data.version,
       timeUsed,
+      success: true,
     }
+  }
+
+  private async renderAllVersions(
+    content: string,
+    versions: string[],
+    user: User
+  ): Promise<{
+    results: Array<{ version: string; svgContent: string; success: boolean }>
+    highestSuccessful: { version: string; svgContent: string }
+    totalTimeUsed: number
+  }> {
+    const sortedVersions = [...versions].sort((a, b) => {
+      const aParts = a.split('.').map(Number)
+      const bParts = b.split('.').map(Number)
+      for (let i = 0; i < Math.max(aParts.length, bParts.length); i++) {
+        const diff = (bParts[i] || 0) - (aParts[i] || 0)
+        if (diff !== 0) return diff
+      }
+      return 0
+    })
+
+    const reducedTimeout = Math.floor(5000 / versions.length)
+    const results: Array<{ version: string; svgContent: string; success: boolean }> = []
+    let totalTimeUsed = 0
+    let highestSuccessful: { version: string; svgContent: string } | null = null
+
+    for (const version of sortedVersions) {
+      if (user.computationTime < reducedTimeout) {
+        throw new PermissionDeniedException(
+          'Insufficient computation time. Please try again tomorrow or request a manual approval from support.'
+        )
+      }
+
+      const result = await this.renderSnippetWithVersion(content, version, reducedTimeout)
+      totalTimeUsed += result.timeUsed
+
+      user.computationTime -= result.timeUsed
+      await user.save()
+
+      results.push({
+        version: result.version,
+        svgContent: result.svgContent,
+        success: result.success,
+      })
+
+      if (result.success && !highestSuccessful) {
+        highestSuccessful = {
+          version: result.version,
+          svgContent: result.svgContent,
+        }
+      }
+    }
+
+    if (!highestSuccessful) {
+      throw new Error400Exception('Failed to render snippet with the highest version.')
+    }
+
+    return { results, highestSuccessful, totalTimeUsed }
   }
 
   private async attachPackages(
@@ -148,27 +207,37 @@ export default class SnippetsController {
         await this.attachPackages(snippet, validated.packages)
       }
 
-      const { svgContent, version } = await this.renderSnippet(snippet.content, user)
+      const versionsToRender =
+        validated.versions && validated.versions.length > 0
+          ? validated.versions
+          : [availableSnippetVersions[availableSnippetVersions.length - 1]]
+
+      const { results, highestSuccessful } = await this.renderAllVersions(
+        snippet.content,
+        versionsToRender,
+        user
+      )
 
       const svgKey = `${snippet.publicId}-${nanoid()}`
       const key = `snippets/${svgKey}.svg`
 
-      await drive.use().put(key, svgContent)
+      await drive.use().put(key, highestSuccessful.svgContent)
 
       snippet.image = svgKey
 
-      const existingVersion = await snippet
-        .related('versions')
-        .query()
-        .where('version', version)
-        .where('success', true)
-        .first()
+      for (const result of results) {
+        const existingVersion = await snippet
+          .related('versions')
+          .query()
+          .where('version', result.version)
+          .first()
 
-      if (!existingVersion) {
-        await snippet.related('versions').create({
-          version: version,
-          success: true,
-        })
+        if (!existingVersion) {
+          await snippet.related('versions').create({
+            version: result.version,
+            success: result.success,
+          })
+        }
       }
 
       await snippet.save()
@@ -219,8 +288,9 @@ export default class SnippetsController {
     }
 
     const contentChanged = validated.content && validated.content !== snippet.content
+    const versionsChanged = validated.versions !== undefined
 
-    if (contentChanged) {
+    if (contentChanged || versionsChanged) {
       await this.checkComputationTime(user)
     }
 
@@ -248,28 +318,103 @@ export default class SnippetsController {
         await this.attachPackages(snippet, validated.packages)
       }
 
-      if (contentChanged) {
-        const { svgContent, version } = await this.renderSnippet(snippet.content, user)
+      if (contentChanged || versionsChanged) {
+        const versionsToRender =
+          validated.versions && validated.versions.length > 0
+            ? validated.versions
+            : [availableSnippetVersions[availableSnippetVersions.length - 1]]
 
-        const svgKey = `${snippet.publicId}-${nanoid()}`
-        const key = `snippets/${svgKey}.svg`
+        const allExistingVersions = await snippet.related('versions').query()
 
-        await drive.use().put(key, svgContent)
+        const oldHighestSuccessfulVersion = allExistingVersions
+          .filter((v) => v.success)
+          .sort((a, b) => {
+            const aParts = a.version.split('.').map(Number)
+            const bParts = b.version.split('.').map(Number)
+            for (let i = 0; i < Math.max(aParts.length, bParts.length); i++) {
+              const diff = (bParts[i] || 0) - (aParts[i] || 0)
+              if (diff !== 0) return diff
+            }
+            return 0
+          })[0]
 
-        snippet.image = svgKey
+        const versionsToRemove = allExistingVersions.filter(
+          (v) => !(versionsToRender as string[]).includes(v.version)
+        )
 
-        const existingVersion = await snippet
-          .related('versions')
-          .query()
-          .where('version', version)
-          .where('success', true)
-          .first()
+        for (const versionToRemove of versionsToRemove) {
+          await versionToRemove.delete()
+        }
 
-        if (!existingVersion) {
-          await snippet.related('versions').create({
-            version: version,
-            success: true,
-          })
+        const remainingVersions = allExistingVersions.filter((v) =>
+          (versionsToRender as string[]).includes(v.version)
+        )
+
+        const highestRequestedVersion = [...versionsToRender].sort((a, b) => {
+          const aParts = a.split('.').map(Number)
+          const bParts = b.split('.').map(Number)
+          for (let i = 0; i < Math.max(aParts.length, bParts.length); i++) {
+            const diff = (bParts[i] || 0) - (aParts[i] || 0)
+            if (diff !== 0) return diff
+          }
+          return 0
+        })[0]
+
+        const highestVersionChanged =
+          oldHighestSuccessfulVersion?.version !== highestRequestedVersion
+
+        const versionsToActuallyRender = versionsToRender.filter((version) => {
+          const existing = remainingVersions.find((v) => v.version === version)
+          const isNewOrFailed = !existing || !existing.success
+          const isHighestAndChanged = version === highestRequestedVersion && highestVersionChanged
+          const contentChangedForExisting = contentChanged && existing
+          return isNewOrFailed || isHighestAndChanged || contentChangedForExisting
+        })
+
+        if (versionsToActuallyRender.length === 0) {
+          await snippet.save()
+          await trx.commit()
+
+          await snippet.load('tags')
+          await snippet.load('versions')
+          await snippet.load('usedPackages', (q) => q.pivotColumns(['version']))
+
+          return snippet
+        }
+
+        const { results, highestSuccessful } = await this.renderAllVersions(
+          snippet.content,
+          versionsToActuallyRender,
+          user
+        )
+
+        const shouldUpdateImage = highestSuccessful.version === highestRequestedVersion
+
+        if (shouldUpdateImage) {
+          const svgKey = `${snippet.publicId}-${nanoid()}`
+          const key = `snippets/${svgKey}.svg`
+
+          await drive.use().put(key, highestSuccessful.svgContent)
+
+          snippet.image = svgKey
+        }
+
+        for (const result of results) {
+          const existingVersion = await snippet
+            .related('versions')
+            .query()
+            .where('version', result.version)
+            .first()
+
+          if (!existingVersion) {
+            await snippet.related('versions').create({
+              version: result.version,
+              success: result.success,
+            })
+          } else {
+            existingVersion.success = result.success
+            await existingVersion.save()
+          }
         }
 
         await snippet.save()

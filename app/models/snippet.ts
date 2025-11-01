@@ -119,7 +119,7 @@ export default class Snippet extends compose(BaseModel, SoftDeletes) {
     query
       .preload('tags')
       .withScopes((s) => s.package())
-      .preload('versions')
+      .preload('versions', (q) => q.orderBy('version', 'desc'))
       .withScopes((s) => s.numberOfUpvotes())
       .withScopes((s) => s.createdByScope())
   })
