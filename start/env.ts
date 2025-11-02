@@ -69,5 +69,9 @@ export default await Env.create(new URL('../', import.meta.url), {
   | Variables for configuring the lock package
   |----------------------------------------------------------
   */
-  LOCK_STORE: Env.schema.enum(['redis', 'memory'] as const)
+  LOCK_STORE: Env.schema.enum(['redis', 'memory'] as const),
+
+  CODEBERG_CLIENT_ID: Env.schema.string(),
+
+  CODEBERG_CLIENT_SECRET: Env.schema.string()
 })

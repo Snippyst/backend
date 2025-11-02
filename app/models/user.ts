@@ -35,6 +35,9 @@ export default class User extends compose(BaseModel, AuthFinder, SoftDeletes) {
   declare discordId: string | null
 
   @column()
+  declare codebergId: string | null
+
+  @column()
   declare computationTime: number
 
   @column({ serializeAs: null })

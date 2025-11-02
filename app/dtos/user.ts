@@ -31,6 +31,7 @@ export class UserDto extends UserMinimalDto {
   declare email: string
   declare githubId: string | null
   declare discordId: string | null
+  declare codebergId: string | null
   declare computationTime: number
   declare isPrivileged: boolean
   declare abilities: string[]
@@ -40,6 +41,7 @@ export class UserDto extends UserMinimalDto {
     this.email = data.email
     this.githubId = data.githubId
     this.discordId = data.discordId
+    this.codebergId = data.codebergId
     this.computationTime = data.computationTime
     this.isPrivileged = data.isPrivileged
     this.abilities = data.abilities

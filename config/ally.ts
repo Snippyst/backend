@@ -1,5 +1,6 @@
 import env from '#start/env'
 import { defineConfig, services } from '@adonisjs/ally'
+import { CodebergDriverService } from './drivers/codeberg.js'
 
 const allyConfig = defineConfig({
   github: services.github({
@@ -16,6 +17,11 @@ const allyConfig = defineConfig({
     disableGuildSelect: true,
     prompt: 'none',
     scopes: ['identify', 'email'],
+  }),
+  codeberg: CodebergDriverService({
+    clientId: env.get('CODEBERG_CLIENT_ID'),
+    clientSecret: env.get('CODEBERG_CLIENT_SECRET'),
+    callbackUrl: env.get('FRONTEND_URL') + '/auth/codeberg/callback',
   }),
 })
 

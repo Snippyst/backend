@@ -16,114 +16,118 @@ export default class AuthController {
     return ally.use(params.provider).redirect()
   }
 
-  async githubCallback({ ally, response }: HttpContext) {
-    const github = ally.use('github')
+  async oauthCallback({ ally, response, request }: HttpContext) {
+    const provider = request.param('provider')
 
-    if (github.accessDenied()) {
-      return new TryAgainLaterException()
+    let oAuth = null
+
+    switch (provider) {
+      case 'github':
+        oAuth = ally.use('github')
+        break
+      case 'discord':
+        oAuth = ally.use('discord')
+        break
+      case 'codeberg':
+        oAuth = ally.use('codeberg')
+        break
+      default:
+        oAuth = null
     }
 
-    if (github.stateMisMatch()) {
-      return new TryAgainLaterException()
+    if (!oAuth) {
+      throw new Error400Exception('Unsupported provider')
     }
 
-    if (github.hasError()) {
-      return github.getError()
+    if (oAuth.accessDenied()) {
+      throw new TryAgainLaterException()
     }
 
-    const githubUser = await github.user()
+    if (oAuth.stateMisMatch()) {
+      throw new TryAgainLaterException()
+    }
 
-    let user = await User.query().where('githubId', githubUser.id).first()
+    if (oAuth.hasError()) {
+      throw oAuth.getError()
+    }
 
-    if (!user) {
-      const oldUserMail = await User.query().where('email', githubUser.email).first()
+    const user = await oAuth.user()
 
+    let localUser: User | null = null
+
+    switch (provider) {
+      case 'github':
+        localUser = await User.query().where('githubId', user.id).first()
+        break
+      case 'discord':
+        localUser = await User.query().where('discordId', user.id).first()
+        break
+      case 'codeberg':
+        localUser = await User.query().where('codebergId', user.id).first()
+        break
+    }
+
+    if (
+      !user.email ||
+      user.email === '' ||
+      (!user.nickName && !user.name) ||
+      !user.id ||
+      user.id === ''
+    ) {
+      throw new Error400Exception(
+        'Email and username are required. Your OAuth provider did not return these details.'
+      )
+    }
+
+    if (!localUser) {
+      // SignUp flow
+      const oldUserMail = await User.query().where('email', 'ILIKE', user.email).first()
       if (oldUserMail) {
-        return new Error400Exception(
-          'Email already in use. Please login using your existing method and link your GitHub account from settings.'
+        throw new Error400Exception(
+          'Email already in use. You cannot sign up using this OAuth provider. Use your existing method.'
         )
       }
 
       const oldUserName = await User.query()
-        .where('username', githubUser.nickName || githubUser.name)
+        .where('username', 'ILIKE', user.nickName || user.name)
         .first()
+
       if (oldUserName) {
-        return new Error400Exception(
-          'Username already in use. Please change your username from settings before linking your GitHub account.'
+        throw new Error400Exception(
+          'Username already in use. You cannot sign up using this OAuth provider. Use your existing method.'
         )
       }
 
-      user = new User()
-      user.githubId = githubUser.id
+      localUser = new User()
+      switch (provider) {
+        case 'github':
+          localUser.githubId = user.id
+          break
+        case 'discord':
+          localUser.discordId = user.id
+          break
+        case 'codeberg':
+          localUser.codebergId = user.id
+          break
+      }
+
+      localUser.username = user.nickName || user.name
+      localUser.email = user.email
+
+      await localUser.save()
+    } else {
+      // Login flow - update details
+      localUser.username = user.nickName || user.name
+      localUser.email = user.email
+      await localUser.save()
     }
 
-    user.username = githubUser.nickName || githubUser.name
-    user.email = githubUser.email
-
-    await user.save()
-
-    const token = await this.createToken(user)
+    const token = await this.createToken(localUser)
 
     await this.cookieSet(response, token)
 
     return {
-      user,
-      token,
-    }
-  }
-
-  async discordCallback({ ally, response }: HttpContext) {
-    const discord = ally.use('discord')
-
-    if (discord.accessDenied()) {
-      return new TryAgainLaterException()
-    }
-
-    if (discord.stateMisMatch()) {
-      return new TryAgainLaterException()
-    }
-
-    if (discord.hasError()) {
-      return discord.getError()
-    }
-
-    const discordUser = await discord.user()
-
-    let user = await User.query().where('discordId', discordUser.id).first()
-
-    if (!user) {
-      const oldUserMail = await User.query().where('email', discordUser.email).first()
-
-      if (oldUserMail) {
-        return new Error400Exception(
-          'Email already in use. Please login using your existing method and link your Discord account from settings.'
-        )
-      }
-
-      const oldUserName = await User.query()
-        .where('username', discordUser.nickName || discordUser.name)
-        .first()
-
-      if (oldUserName) {
-        return new Error400Exception(
-          'Username already in use. Please change your username from settings before linking your Discord account.'
-        )
-      }
-
-      user = new User()
-      user.discordId = discordUser.id
-    }
-    user.username = discordUser.nickName || discordUser.name
-    user.email = discordUser.email
-
-    await user.save()
-
-    const token = await this.createToken(user)
-
-    await this.cookieSet(response, token)
-
-    return {
-      user,
+      localUser,
       token,
     }
   }

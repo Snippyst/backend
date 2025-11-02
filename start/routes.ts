@@ -68,13 +68,11 @@ router
     router.group(() => {
       router
         .get('/:provider/redirect', '#controllers/auth_controller.redirectToProvider')
-        .where('provider', /github|discord/)
+        .where('provider', /github|discord|codeberg/)
 
       router
-        .get('/github/callback', '#controllers/auth_controller.githubCallback')
-        .use(authThrottle)
-      router
-        .get('/discord/callback', '#controllers/auth_controller.discordCallback')
+        .get('/:provider/callback', '#controllers/auth_controller.oauthCallback')
+        .where('provider', /github|discord|codeberg/)
         .use(authThrottle)
 
       router.post('/logout', '#controllers/auth_controller.logout').use(middleware.auth())
