@@ -441,6 +441,7 @@ export default class SnippetsController {
 
     const snippets = await Snippet.query()
       .withScopes((s) => s.minimal())
+      .withScopes((s) => s.isUpvotedByUser(auth.user))
       .orderBy(validated.sortBy || 'numberOfUpvotes', validated.sortOrder || 'desc')
       .orderBy('createdAt', 'desc')
       .if(validated.tags && validated.tags.length > 0, (query) => {
