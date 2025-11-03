@@ -39,6 +39,7 @@ router
           .use(middleware.auth())
           .use(changeDataThrottle)
 
+        router.get('/sitemap', '#controllers/snippets_controller.sitemap').use(listThrottle)
         router.get('/suggest', '#controllers/snippets_controller.searchSuggestions')
         router.get('/:snippetId/comments', '#controllers/comments_controller.index')
         router.get('/', '#controllers/snippets_controller.list').use(listThrottle)

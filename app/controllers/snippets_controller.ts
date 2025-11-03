@@ -169,8 +169,6 @@ export default class SnippetsController {
     if (!user) throw new PermissionDeniedException()
     if (!user.currentAccessToken.allows('snippets:create')) throw new PermissionDeniedException()
 
-    console.log(user.currentAccessToken.abilities)
-
     await this.checkComputationTime(user)
 
     const validated = await request.validateUsing(createSnippetValidator)
@@ -585,5 +583,40 @@ export default class SnippetsController {
     await snippet.delete()
 
     return { success: true }
+  }
+
+  public async sitemap({ request, response }: HttpContext) {
+    const clientIp = request.ip()
+
+    console.log('Sitemap request from IP:', clientIp)
+
+    if (!this.isLocalIp(clientIp)) {
+      return response.forbidden('Access denied')
+    }
+
+    const snippet = await Snippet.query()
+      .select('publicId', 'image', 'updatedAt')
+      .orderBy('updatedAt', 'desc')
+      .limit(10000)
+
+    return snippet.map((snip) => ({
+      id: snip.publicId,
+      image: snip.getImage(),
+      lastUpdatedAt: snip.updatedAt,
+    }))
+  }
+
+  private isLocalIp(ip: string): boolean {
+    const localPatterns = [
+      /^127\./,
+      /^192\.168\./,
+      /^10\./,
+      /^172\.(1[6-9]|2[0-9]|3[01])\./,
+      /^::1$/,
+      /^fc00:/,
+      /^fe80:/,
+    ]
+
+    return localPatterns.some((pattern) => pattern.test(ip))
   }
 }
