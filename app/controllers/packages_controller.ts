@@ -12,8 +12,11 @@ export default class PackagesController {
       .distinctOn('namespace', 'name')
       .orderBy('namespace')
       .orderBy('name')
-      .if(validated.namespace, (query) => {
+      .if(validated.namespace && validated.name, (query) => {
         query.where('namespace', 'ILIKE', `%${validated.namespace}%`)
+      })
+      .if(validated.namespace && !validated.name, (query) => {
+        query.where('name', 'ILIKE', `%${validated.namespace}%`)
       })
       .if(validated.name, (query) => {
         query.where('name', 'ILIKE', `%${validated.name}%`)
