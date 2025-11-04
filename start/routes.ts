@@ -120,6 +120,15 @@ router
           .use(middleware.auth())
       })
       .prefix('/users')
+
+    router
+      .group(() => {
+        router
+          .get('/comments-by-user/:userId', '#controllers/comments_controller.commentsByUser')
+          .use(listThrottle)
+      })
+      .prefix('/moderation')
+      .use(middleware.auth())
   })
   .prefix('/v1')
   .use(throttle)
