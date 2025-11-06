@@ -27,7 +27,13 @@ export default class SnippetsController {
     content: string,
     version: string,
     timeout: number = 5000
-  ): Promise<{ svgContent: string; version: string; timeUsed: number; success: boolean }> {
+  ): Promise<{
+    svgContent: string
+    version: string
+    timeUsed: number
+    success: boolean
+    error?: string
+  }> {
     let result
 
     try {
@@ -53,11 +59,22 @@ export default class SnippetsController {
     const timeUsed = result.status === 408 ? timeout : result?.data?.time || timeout
 
     if (result.status === 408 || result.status !== 200) {
+      let errorMessage = 'Unknown error'
+
+      if (result.status === 408) {
+        errorMessage = 'Rendering timeout'
+      } else if (result.status === 400) {
+        errorMessage = result.data?.error || result.data?.message || 'Invalid snippet content'
+      } else {
+        errorMessage = result.data?.error || result.data?.message || 'Rendering failed'
+      }
+
       return {
         svgContent: '',
         version,
         timeUsed,
         success: false,
+        error: errorMessage.replaceAll('<stdin>:', 'line:'),
       }
     }
 
@@ -74,7 +91,7 @@ export default class SnippetsController {
     versions: string[],
     user: User
   ): Promise<{
-    results: Array<{ version: string; svgContent: string; success: boolean }>
+    results: Array<{ version: string; svgContent: string; success: boolean; error?: string }>
     highestSuccessful: { version: string; svgContent: string }
     totalTimeUsed: number
   }> {
@@ -89,9 +106,15 @@ export default class SnippetsController {
     })
 
     const reducedTimeout = Math.floor(5000 / versions.length)
-    const results: Array<{ version: string; svgContent: string; success: boolean }> = []
+    const results: Array<{
+      version: string
+      svgContent: string
+      success: boolean
+      error?: string
+    }> = []
     let totalTimeUsed = 0
     let highestSuccessful: { version: string; svgContent: string } | null = null
+    const failedVersionErrors: Array<{ version: string; error: string }> = []
 
     for (const version of sortedVersions) {
       if (user.computationTime < reducedTimeout) {
@@ -110,6 +133,7 @@ export default class SnippetsController {
         version: result.version,
         svgContent: result.svgContent,
         success: result.success,
+        error: result.error,
       })
 
       if (result.success && !highestSuccessful) {
@@ -117,11 +141,19 @@ export default class SnippetsController {
           version: result.version,
           svgContent: result.svgContent,
         }
+      } else if (!result.success && result.error) {
+        failedVersionErrors.push({
+          version: result.version,
+          error: result.error,
+        })
       }
     }
 
     if (!highestSuccessful) {
-      throw new Error400Exception('Failed to render snippet with the highest version.')
+      const errorDetails = failedVersionErrors.map((e) => `v${e.version}: ${e.error}`).join('\n')
+      throw new Error400Exception(
+        `Failed to render snippet with the highest version. Errors:\n${errorDetails}`
+      )
     }
 
     return { results, highestSuccessful, totalTimeUsed }
