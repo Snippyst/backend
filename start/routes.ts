@@ -42,8 +42,14 @@ router
         router.get('/sitemap', '#controllers/snippets_controller.sitemap').use(listThrottle)
         router.get('/suggest', '#controllers/snippets_controller.searchSuggestions')
         router.get('/:snippetId/comments', '#controllers/comments_controller.index')
-        router.get('/', '#controllers/snippets_controller.list').use(listThrottle)
-        router.get('/:id', '#controllers/snippets_controller.index').use(singleItemThrottle)
+        router
+          .get('/', '#controllers/snippets_controller.list')
+          .use(listThrottle)
+          .use(middleware.check())
+        router
+          .get('/:id', '#controllers/snippets_controller.index')
+          .use(singleItemThrottle)
+          .use(middleware.check())
       })
       .prefix('/snippets')
 

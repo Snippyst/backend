@@ -4,12 +4,21 @@ import { normalize } from 'path'
 import { HttpContext } from '@adonisjs/core/http'
 import app from '@adonisjs/core/services/app'
 import drive from '@adonisjs/drive/services/main'
+import { Logger } from '@adonisjs/core/logger'
 
 const PATH_TRAVERSAL_REGEX = /(?:^|[\\/])\.\.(?:[\\/]|$)/
 
 export default class MiscsController {
+  protected logger: Logger
+  constructor() {
+    const ctx = HttpContext.getOrFail()
+    this.logger = ctx.logger
+  }
+
   async image({ request, response }: HttpContext) {
     const key = request.param('imageKey')
+
+    // this.logger.debug({ req_data: { imageKey: key } }, `Fetching image`)
 
     const fsDrive = drive.use('fs')
 
@@ -59,6 +68,8 @@ export default class MiscsController {
         .toBuffer()
 
       fsDrive.put(`snippets/previews/${normalizedPath}.png`, pngBuffer)
+
+      this.logger.info({ req_data: { imageKey: key } }, `Image generated successfully`)
 
       response.type('image/png')
       return response.send(pngBuffer)

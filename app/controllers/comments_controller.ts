@@ -4,17 +4,26 @@ import Comment from '#models/comment'
 import Snippet from '#models/snippet'
 import { createCommentValidator } from '#validators/comment'
 import { paginationValidator } from '#validators/common'
-import type { HttpContext } from '@adonisjs/core/http'
+import { HttpContext } from '@adonisjs/core/http'
 import db from '@adonisjs/lucid/services/db'
 import { TransactionClientContract } from '@adonisjs/lucid/types/database'
 import { CommentMinimalDto } from '../dtos/comment.js'
 import User from '#models/user'
+import { Logger } from '@adonisjs/core/logger'
 
 export default class CommentsController {
+  protected logger: Logger
+  constructor() {
+    const ctx = HttpContext.getOrFail()
+    this.logger = ctx.logger
+  }
+
   async index({ request }: HttpContext) {
     const validated = await request.validateUsing(paginationValidator)
     const page = validated.page || 1
     const limit = validated.limit || 25
+
+    this.logger.debug({ req_data: validated }, `Listing comments for snippet`)
 
     const snippetId = request.param('snippetId')
     if (!snippetId) {
@@ -37,6 +46,8 @@ export default class CommentsController {
     if (!auth.user.currentAccessToken.allows('comments:create'))
       throw new PermissionDeniedException()
     const validated = await request.validateUsing(createCommentValidator)
+
+    this.logger.info({ req_data: validated }, `Creating comment on snippet`)
 
     const trx: TransactionClientContract = await db.transaction()
     try {
@@ -74,6 +85,8 @@ export default class CommentsController {
     }
 
     const commentId = request.param('id')
+    this.logger.info({ req_data: { id: commentId } }, `Deleting comment`)
+
     const comment = await Comment.query()
       .where('publicId', commentId)
       .if(!auth.user.currentAccessToken.allows('comments:manage'), (query) => {
@@ -95,6 +108,8 @@ export default class CommentsController {
     const validated = await request.validateUsing(paginationValidator)
     const page = validated.page || 1
     const limit = validated.limit || 25
+
+    this.logger.info({ req_data: validated }, `Listing comments by user`)
 
     if (!userId) {
       throw new Error400Exception('User ID is required')

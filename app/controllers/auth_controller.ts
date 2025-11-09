@@ -1,5 +1,5 @@
 import User from '#models/user'
-import type { HttpContext } from '@adonisjs/core/http'
+import { HttpContext } from '@adonisjs/core/http'
 import { AdminUserDto, UserDto, UserMinimalDto } from '../dtos/user.js'
 import { AccessToken } from '@adonisjs/auth/access_tokens'
 import TryAgainLaterException from '#exceptions/try_again_later_exception'
@@ -10,8 +10,15 @@ import {
   searchByNameValidator,
 } from '#validators/common'
 import PermissionDeniedException from '#exceptions/permission_denied_exception'
+import { Logger } from '@adonisjs/core/logger'
 
 export default class AuthController {
+  protected logger: Logger
+  constructor() {
+    const ctx = HttpContext.getOrFail()
+    this.logger = ctx.logger
+  }
+
   async redirectToProvider({ ally, params }: HttpContext) {
     return ally.use(params.provider).redirect()
   }
@@ -35,16 +42,18 @@ export default class AuthController {
         oAuth = null
     }
 
+    this.logger.debug(`OAuth callback from provider: ${provider}`)
+
     if (!oAuth) {
       throw new Error400Exception('Unsupported provider')
     }
 
     if (oAuth.accessDenied()) {
-      throw new TryAgainLaterException()
+      throw new TryAgainLaterException('Access was denied. Please try again later.')
     }
 
     if (oAuth.stateMisMatch()) {
-      throw new TryAgainLaterException()
+      throw new TryAgainLaterException('State mismatch. Please try again later.')
     }
 
     if (oAuth.hasError()) {
@@ -52,6 +61,8 @@ export default class AuthController {
     }
 
     const user = await oAuth.user()
+
+    this.logger.debug(`OAuth user info received from provider: ${provider}`)
 
     let localUser: User | null = null
 
@@ -114,6 +125,8 @@ export default class AuthController {
       localUser.username = user.nickName || user.name
       localUser.email = user.email
 
+      this.logger.info(`Creating new user from OAuth provider: ${provider}`)
+
       await localUser.save()
     } else {
       // Login flow - update details
@@ -146,6 +159,7 @@ export default class AuthController {
     const token = await User.accessTokens.create(user, user.abilities, {
       expiresIn: '30 days',
     })
+    this.logger.info({ abilities: user.abilities }, `New access token issued`)
     return token
   }
 
@@ -166,6 +180,7 @@ export default class AuthController {
   async logout({ auth, response }: HttpContext) {
     await auth.use('api').invalidateToken()
     response.clearCookie('auth_token')
+    this.logger.info(`User logged out and token invalidated`)
     return { success: true, message: 'Logged out successfully' }
   }
 
@@ -193,6 +208,8 @@ export default class AuthController {
   async listUsers({ request }: HttpContext) {
     const validated = await request.validateUsing(searchByNameValidator)
 
+    this.logger.debug(`Searching users with username like: ${validated.username}`)
+
     const users = await User.query()
       .orderBy('username', 'desc')
       .where('username', 'ILIKE', `%${validated.username}%`)
@@ -207,6 +224,8 @@ export default class AuthController {
       throw new PermissionDeniedException()
     }
     const validated = await request.validateUsing(optionalSearchValidator)
+
+    this.logger.info({ req_data: validated }, `Moderator listing users with search`)
 
     // @ts-ignore
     const query = User.query().orderBy('createdAt', 'desc').withTrashed()
@@ -227,6 +246,9 @@ export default class AuthController {
       throw new PermissionDeniedException()
     }
     const validated = await request.validateUsing(getByIdValidator)
+
+    this.logger.info({ req_data: validated }, `Disabling user account`)
+
     const user = await User.findBy('publicId', validated.id)
     if (!user) {
       throw new Error400Exception('User not found')
@@ -249,6 +271,9 @@ export default class AuthController {
       throw new PermissionDeniedException()
     }
     const validated = await request.validateUsing(getByIdValidator)
+
+    this.logger.info({ req_data: validated }, `Enabling user account`)
+
     // @ts-ignore
     const user = await User.query().withTrashed().where('publicId', validated.id).restore()
 

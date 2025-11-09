@@ -17,6 +17,22 @@ const loggerConfig = defineConfig({
       transport: {
         targets: targets()
           .pushIf(!app.inProduction, targets.pretty())
+          .push({
+            target: 'pino-loki',
+            options: {
+              batching: true,
+              interval: 5,
+              labels: {
+                app: env.get('APP_NAME', 'adonis-app'),
+                env: env.get('NODE_ENV', 'development'),
+              },
+              host: env.get('LOKI_HOST'),
+              basicAuth: {
+                username: env.get('LOKI_USER'),
+                password: env.get('LOKI_KEY'),
+              },
+            },
+          })
           .pushIf(app.inProduction, targets.file({ destination: 1 }))
           .toArray(),
       },

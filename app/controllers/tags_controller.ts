@@ -1,18 +1,27 @@
-import type { HttpContext } from '@adonisjs/core/http'
+import { HttpContext } from '@adonisjs/core/http'
 import Tag from '#models/tag'
 import { createTagValidator, listTagsValidator, updateTagValidator } from '#validators/tag'
 import { TagDto } from '../dtos/tag.js'
 import PermissionDeniedException from '#exceptions/permission_denied_exception'
 import Error400Exception from '#exceptions/error_400_exception'
 import { multipleIdsValidator } from '#validators/common'
+import { Logger } from '@adonisjs/core/logger'
 
 export default class TagsController {
+  protected logger: Logger
+  constructor() {
+    const ctx = HttpContext.getOrFail()
+    this.logger = ctx.logger
+  }
+
   public async store({ request, auth }: HttpContext) {
     const user = auth.user
     if (!user) throw new PermissionDeniedException()
     if (!user.currentAccessToken.allows('tags:create')) throw new PermissionDeniedException()
 
     const validated = await request.validateUsing(createTagValidator)
+
+    this.logger.info({ req_data: validated }, `Creating tag`)
 
     const existingTag = await Tag.query().where('name', 'ILIKE', validated.name).first()
     if (existingTag) {
@@ -35,6 +44,8 @@ export default class TagsController {
     const page = validated.page || 1
     const limit = validated.limit || 10
 
+    this.logger.debug({ req_data: validated }, `Listing tags`)
+
     const tags = await Tag.query()
       .withScopes((scopes) => scopes.numberOfSnippets())
       .if(validated.search, (query) => query.where('name', 'ilike', `%${validated.search}%`))
@@ -46,6 +57,9 @@ export default class TagsController {
 
   public async multiple({ request }: HttpContext) {
     const validated = await request.validateUsing(multipleIdsValidator)
+
+    this.logger.debug({ req_data: validated }, `Fetching multiple tags`)
+
     const tags = await Tag.query().whereIn('public_id', validated.ids)
     return TagDto.fromArray(tags)
   }
@@ -56,6 +70,8 @@ export default class TagsController {
     if (!user.currentAccessToken.allows('tags:update')) throw new PermissionDeniedException()
 
     const validated = await request.validateUsing(updateTagValidator)
+
+    this.logger.info({ req_data: validated }, `Updating tag`)
 
     const tag = await Tag.findBy('publicId', params.id)
     if (!tag) {
@@ -88,6 +104,8 @@ export default class TagsController {
     const user = auth.user
     if (!user) throw new PermissionDeniedException()
     if (!user.currentAccessToken.allows('tags:delete')) throw new PermissionDeniedException()
+
+    this.logger.info({ tag_id: params.id }, `Deleting tag`)
 
     const tag = await Tag.findBy('publicId', params.id)
     if (!tag) {

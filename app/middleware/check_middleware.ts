@@ -1,21 +1,14 @@
 import type { HttpContext } from '@adonisjs/core/http'
 import type { NextFn } from '@adonisjs/core/types/http'
 
-/**
- * Auth middleware is used authenticate HTTP requests and deny
- * access to unauthenticated users.
- */
-export default class AuthMiddleware {
-  /**
-   * The URL to redirect to, when authentication fails
-   */
-
+export default class CheckMiddleware {
   async handle(ctx: HttpContext, next: NextFn) {
-    await ctx.auth.authenticateUsing(['api'])
+    await ctx.auth.checkUsing(['api'])
     ctx.logger = ctx.logger.child({
       user: ctx.auth.user?.id,
       token: ctx.auth.user?.currentAccessToken.identifier,
     })
-    return next()
+    const output = await next()
+    return output
   }
 }

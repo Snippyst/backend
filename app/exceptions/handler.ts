@@ -1,6 +1,7 @@
 import app from '@adonisjs/core/services/app'
 import { errors } from '@adonisjs/limiter'
 import { HttpContext, ExceptionHandler } from '@adonisjs/core/http'
+import * as adonisExceptions from '@adonisjs/core/exceptions'
 
 export default class HttpExceptionHandler extends ExceptionHandler {
   /**
@@ -27,8 +28,6 @@ export default class HttpExceptionHandler extends ExceptionHandler {
       return ctx.response.status(error.status).send(message)
     }
 
-    console.error('An error occurred:', error)
-
     return super.handle(error, ctx)
   }
 
@@ -39,6 +38,23 @@ export default class HttpExceptionHandler extends ExceptionHandler {
    * @note You should not attempt to send a response from this method.
    */
   async report(error: unknown, ctx: HttpContext) {
+    const logError: any = error
+
+    // If in production, remove stack trace from logged error
+    if (app.inProduction) {
+      delete logError.stack
+    }
+
+    if (error instanceof adonisExceptions.Exception) {
+      if (error.status >= 500) {
+        ctx.logger.error({ err: error }, 'Server error occurred')
+      } else {
+        ctx.logger.warn({ err: error }, 'Client error occurred')
+      }
+    } else {
+      ctx.logger.error({ err: error }, 'Unexpected error occurred')
+    }
+
     return super.report(error, ctx)
   }
 }

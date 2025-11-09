@@ -7,7 +7,7 @@ import {
   updateSnippetValidator,
   upvoteSnippetValidator,
 } from '#validators/snippet'
-import type { HttpContext } from '@adonisjs/core/http'
+import { HttpContext } from '@adonisjs/core/http'
 import db from '@adonisjs/lucid/services/db'
 import { SnippetDto, SnippetMinimalDto } from '../dtos/snippet.js'
 import Tag from '#models/tag'
@@ -21,12 +21,21 @@ import PermissionDeniedException from '#exceptions/permission_denied_exception'
 import ServiceUnavailableException from '#exceptions/service_unavailable_exception'
 import Error400Exception from '#exceptions/error_400_exception'
 import User from '#models/user'
+import { Logger } from '@adonisjs/core/logger'
+
+const GLOBAL_RENDER_TIMEOUT = 5000
 
 export default class SnippetsController {
+  protected logger: Logger
+  constructor() {
+    const ctx = HttpContext.getOrFail()
+    this.logger = ctx.logger
+  }
+
   private async renderSnippetWithVersion(
     content: string,
     version: string,
-    timeout: number = 5000
+    timeout: number = GLOBAL_RENDER_TIMEOUT
   ): Promise<{
     svgContent: string
     version: string
@@ -35,6 +44,8 @@ export default class SnippetsController {
     error?: string
   }> {
     let result
+
+    this.logger.debug({ req_data: { content, version, timeout } }, `Rendering snippet`)
 
     try {
       result = await axios.post(
@@ -105,7 +116,8 @@ export default class SnippetsController {
       return 0
     })
 
-    const reducedTimeout = Math.floor(5000 / versions.length)
+    this.logger.info({ req_data: { content, versions: sortedVersions } }, `Rendering all versions`)
+
     const results: Array<{
       version: string
       svgContent: string
@@ -117,13 +129,13 @@ export default class SnippetsController {
     const failedVersionErrors: Array<{ version: string; error: string }> = []
 
     for (const version of sortedVersions) {
-      if (user.computationTime < reducedTimeout) {
+      if (user.computationTime < GLOBAL_RENDER_TIMEOUT) {
         throw new PermissionDeniedException(
           'Insufficient computation time. Please try again tomorrow or request a manual approval from support.'
         )
       }
 
-      const result = await this.renderSnippetWithVersion(content, version, reducedTimeout)
+      const result = await this.renderSnippetWithVersion(content, version, GLOBAL_RENDER_TIMEOUT)
       totalTimeUsed += result.timeUsed
 
       user.computationTime -= result.timeUsed
@@ -204,6 +216,8 @@ export default class SnippetsController {
     await this.checkComputationTime(user)
 
     const validated = await request.validateUsing(createSnippetValidator)
+
+    this.logger.info({ req_data: validated }, `Creating new snippet`)
 
     const existingSnippet = await Snippet.query().where('title', 'ILIKE', validated.title).first()
     if (existingSnippet) {
@@ -292,6 +306,8 @@ export default class SnippetsController {
 
     const { id } = await getByIdValidator.validate(params)
     const validated = await request.validateUsing(updateSnippetValidator)
+
+    this.logger.info({ req_data: { id, ...validated } }, `Updating snippet`)
 
     if (Object.keys(validated).length === 0) {
       throw new Error400Exception('No fields provided for update.')
@@ -469,6 +485,8 @@ export default class SnippetsController {
     const limit = validated.limit || 10
     if (!auth.isAuthenticated) await auth.check()
 
+    this.logger.debug({ req_data: validated }, `Listing snippets`)
+
     const snippets = await Snippet.query()
       .withScopes((s) => s.minimal())
       .withScopes((s) => s.isUpvotedByUser(auth.user))
@@ -515,6 +533,8 @@ export default class SnippetsController {
 
   public async searchSuggestions({ request }: HttpContext) {
     const validated = await request.validateUsing(listSnippetValidator)
+
+    this.logger.debug({ req_data: validated }, `Fetching search suggestions`)
 
     const snippets = await Snippet.query()
       .withScopes((s) => s.numberOfUpvotes())
@@ -564,6 +584,8 @@ export default class SnippetsController {
     const validated = await getByIdValidator.validate(request.params())
     if (!auth.isAuthenticated) await auth.check()
 
+    this.logger.debug({ req_data: validated }, `Fetching snippet`)
+
     const snippet = await Snippet.query()
       .where('publicId', validated.id)
       .withScopes((s) => s.fullAll())
@@ -581,6 +603,8 @@ export default class SnippetsController {
     const params = { ...request.params(), ...request.body() }
 
     const validated = await upvoteSnippetValidator.validate(params)
+
+    this.logger.info({ req_data: validated }, `Voting on snippet`)
 
     const snippet = await Snippet.query().where('publicId', validated.snippetId).firstOrFail()
 
@@ -605,6 +629,8 @@ export default class SnippetsController {
 
     const validated = await getByIdValidator.validate(request.params())
 
+    this.logger.info({ req_data: validated }, `Deleting snippet`)
+
     const snippet = await Snippet.query()
       .where('publicId', validated.id)
       .if(!auth.user.currentAccessToken.allows('snippets:manage'), (query) => {
@@ -620,7 +646,7 @@ export default class SnippetsController {
   public async sitemap({ request, response }: HttpContext) {
     const clientIp = request.ip()
 
-    console.log('Sitemap request from IP:', clientIp)
+    this.logger.info(`Fetching sitemap`)
 
     if (!this.isLocalIp(clientIp)) {
       return response.forbidden('Access denied')

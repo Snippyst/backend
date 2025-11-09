@@ -73,5 +73,13 @@ export default await Env.create(new URL('../', import.meta.url), {
 
   CODEBERG_CLIENT_ID: Env.schema.string(),
 
-  CODEBERG_CLIENT_SECRET: Env.schema.string()
+  CODEBERG_CLIENT_SECRET: Env.schema.string(),
+
+  LOKI_KEY: Env.schema.string(),
+
+  LOKI_HOST: Env.schema.string(),
+
+  LOKI_USER: Env.schema.string(),
+
+  APP_NAME: Env.schema.string()
 })
