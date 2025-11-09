@@ -40,7 +40,10 @@ export default class MiscsController {
         response.type('image/png')
         return response.send(cached)
       } catch (err) {
-        console.error('Failed to read cached preview, regenerating:', err)
+        this.logger.error(
+          { req_data: { imageKey: key }, err },
+          `Failed to read cached preview, regenerating`
+        )
       }
     }
 
@@ -74,7 +77,7 @@ export default class MiscsController {
       response.type('image/png')
       return response.send(pngBuffer)
     } catch (error) {
-      console.error(error)
+      this.logger.error({ req_data: { imageKey: key }, err: error }, `Failed to convert image`)
       return response.internalServerError('Failed to convert image')
     }
   }

@@ -61,7 +61,6 @@ export default class SnippetsController {
         }
       )
     } catch (error) {
-      console.error('Error communicating with Typst rendering service:', error)
       throw new ServiceUnavailableException(
         'Typst rendering service is unavailable. Please try again later and contact support if the issue persists.'
       )
@@ -184,7 +183,7 @@ export default class SnippetsController {
         .first()
 
       if (!packageRecord) {
-        console.warn(`Package not found: ${pkg.namespace}/${pkg.name}. Skipping.`)
+        this.logger.warn(`Package not found: ${pkg.namespace}/${pkg.name}. Skipping.`)
         continue
       }
 

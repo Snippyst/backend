@@ -9,9 +9,6 @@ export default class LoggerMiddleware {
       method: ctx.request.method(),
       userAgent: ctx.request.header('user-agent') || 'unknown',
     })
-    console.log(
-      `Request: ${ctx.request.method()} ${ctx.request.url()} from IP: ${ctx.request.ip()}`
-    )
     const output = await next()
     return output
   }
