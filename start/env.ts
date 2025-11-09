@@ -81,5 +81,7 @@ export default await Env.create(new URL('../', import.meta.url), {
 
   LOKI_USER: Env.schema.string(),
 
-  APP_NAME: Env.schema.string()
+  APP_NAME: Env.schema.string(),
+
+  FRONTEND_IPS: Env.schema.string()
 })

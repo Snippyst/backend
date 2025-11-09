@@ -15,6 +15,7 @@ import {
   authThrottle,
   changeDataThrottle,
   listThrottle,
+  restrictiveThrottle,
   singleItemThrottle,
   throttle,
 } from './limiter.js'
@@ -39,6 +40,10 @@ router
           .use(middleware.auth())
           .use(changeDataThrottle)
 
+        router
+          .get('/random', '#controllers/snippets_controller.random')
+          .use(singleItemThrottle)
+          .use(restrictiveThrottle)
         router.get('/sitemap', '#controllers/snippets_controller.sitemap').use(listThrottle)
         router.get('/suggest', '#controllers/snippets_controller.searchSuggestions')
         router.get('/:snippetId/comments', '#controllers/comments_controller.index')

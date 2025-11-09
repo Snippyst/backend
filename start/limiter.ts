@@ -24,7 +24,11 @@ export const authThrottle = limiter.define('auth_routes', () => {
 })
 
 export const singleItemThrottle = limiter.define('single_item', () => {
-  return limiter.allowRequests(60).every('1 minute')
+  return limiter.allowRequests(60).every('1 minute').blockFor('10 minutes')
+})
+
+export const restrictiveThrottle = limiter.define('restrictive', () => {
+  return limiter.allowRequests(15).every('1 minute').blockFor('2 minutes')
 })
 
 export const changeDataThrottle = limiter.define('change_data', (ctx) => {

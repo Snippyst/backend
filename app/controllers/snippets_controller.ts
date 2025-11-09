@@ -642,6 +642,17 @@ export default class SnippetsController {
     return { success: true }
   }
 
+  public async random() {
+    const randomSnippet = await Snippet.query()
+      .withScopes((s) => s.minimal())
+      .orderByRaw('RANDOM()')
+      .firstOrFail()
+
+    this.logger.debug({ req_data: { id: randomSnippet.publicId } }, `Fetching random snippet`)
+
+    return new SnippetMinimalDto(randomSnippet)
+  }
+
   public async sitemap({ request, response }: HttpContext) {
     const clientIp = request.ip()
 
