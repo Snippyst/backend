@@ -25,19 +25,9 @@ export default class HttpExceptionHandler extends ExceptionHandler {
         ctx.response.header(header, headers[header])
       })
 
-      return ctx.response.status(error.status).send(message)
+      return ctx.response.status(429).send(message)
     }
 
-    return super.handle(error, ctx)
-  }
-
-  /**
-   * The method is used to report error to the logging service or
-   * the third party error monitoring service.
-   *
-   * @note You should not attempt to send a response from this method.
-   */
-  async report(error: unknown, ctx: HttpContext) {
     const logError: any = error
 
     // If in production, remove stack trace from logged error
@@ -55,6 +45,16 @@ export default class HttpExceptionHandler extends ExceptionHandler {
       ctx.logger.error({ err: error }, 'Unexpected error occurred')
     }
 
+    return super.handle(error, ctx)
+  }
+
+  /**
+   * The method is used to report error to the logging service or
+   * the third party error monitoring service.
+   *
+   * @note You should not attempt to send a response from this method.
+   */
+  async report(error: unknown, ctx: HttpContext) {
     return super.report(error, ctx)
   }
 }
