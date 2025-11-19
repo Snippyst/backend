@@ -663,7 +663,7 @@ export default class SnippetsController {
     }
 
     const snippet = await Snippet.query()
-      .select('publicId', 'image', 'updatedAt')
+      .select('publicId', 'image', 'updatedAt', 'title', 'description')
       .orderBy('updatedAt', 'desc')
       .limit(10000)
 
@@ -671,6 +671,8 @@ export default class SnippetsController {
       id: snip.publicId,
       image: snip.getImage(),
       lastUpdatedAt: snip.updatedAt,
+      title: snip.title,
+      description: snip.description,
     }))
   }
 
