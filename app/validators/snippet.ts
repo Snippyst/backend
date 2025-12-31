@@ -1,6 +1,6 @@
 import vine from '@vinejs/vine'
 
-export const availableSnippetVersions = ['0.12.0', '0.13.0', '0.13.1', '0.14.0', '0.14.1'] as const
+export const availableSnippetVersions = ['0.12.0', '0.13.0', '0.13.1', '0.14.0', '0.14.1', '0.14.2'] as const
 
 export const createSnippetValidator = vine.compile(
   vine.object({
